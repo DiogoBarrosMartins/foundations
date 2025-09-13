@@ -3,14 +3,12 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-
-import { CreatePlayerDto } from './dto/create-player.dto';
-import { UpdatePlayerDto } from './dto/update-player.dto';
-import { LoginPlayerDto } from './dto/login-player.dto';
-
 import * as jwt from 'jsonwebtoken';
 import { hash, compare } from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { CreatePlayerDto } from './dto/create-player.dto';
+import { UpdatePlayerDto } from './dto/update-player.dto';
+import { LoginPlayerDto } from './dto/login-player.dto';
 
 interface JwtPayload {
   sub: string;
@@ -55,7 +53,11 @@ export class PlayerService {
     const hashedPassword = await hash(dto.password, 10);
 
     const player = await this.prisma.player.create({
-      data: { ...dto, password: hashedPassword },
+      data: {
+        username: dto.username,
+        password: hashedPassword,
+        raceId: dto.raceId,
+      },
     });
 
     const token = this.generateToken(player.id);
@@ -88,8 +90,17 @@ export class PlayerService {
     });
   }
 
-  update(id: string, data: UpdatePlayerDto) {
-    return this.prisma.player.update({ where: { id }, data });
+  async update(id: string, dto: UpdatePlayerDto) {
+    const data: any = {};
+
+    if (dto.username) data.username = dto.username;
+    if (dto.password) data.password = await hash(dto.password, 10);
+    if (dto.raceId) data.raceId = dto.raceId;
+
+    return this.prisma.player.update({
+      where: { id },
+      data,
+    });
   }
 
   async softDelete(id: string) {

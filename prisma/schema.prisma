@@ -7,17 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Player {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  email     String   @unique
-  password  String
-  race      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
-}
-
 model ChatMessage {
   id        String   @id @default(cuid())
   playerId  String?
@@ -27,17 +16,236 @@ model ChatMessage {
   createdAt DateTime @default(now())
 }
 
+enum RaceName {
+  HUMAN
+  ORC
+  ELF
+  DWARF
+  UNDEAD
+}
+
+model Race {
+  id          String   @id @default(uuid())
+  name        RaceName @unique
+  description String
+  traits      Json
+  hubX        Int?
+  hubY        Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  outposts Outpost[]
+  players  Player[]
+}
+
+model Player {
+  id        String    @id @default(uuid())
+  username  String    @unique
+  password  String
+  raceId    String?
+  race      Race?     @relation(fields: [raceId], references: [id])
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  villages  Village[]
+}
+
+model Outpost {
+  id        String   @id @default(uuid())
+  raceId    String
+  race      Race     @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  name      String
+  type      String
+  x         Int
+  y         Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tile Tile?
+
+  @@index([raceId])
+}
+
+enum BuildingType {
+  SAWMILL
+  CLAY_PIT
+  IRON_MINE
+  FARM
+  WAREHOUSE
+  GRANARY
+  MARKET
+  BARRACKS
+  STABLE
+  WORKSHOP
+  WALL
+  TOWER
+  SMITHY
+  EMBASSY
+  ACADEMY
+  SHRINE
+}
+
 model Village {
   id        String   @id @default(uuid())
   name      String
   playerId  String
-  playerName String
-  x         Int?
-  y         Int?
+  playerName String?
+  player    Player   @relation(fields: [playerId], references: [id])
+  x         Int
+  y         Int
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now())
+  resolvedAt      DateTime? 
   resourceAmounts         Json     @default("{\"food\":500,\"wood\":500,\"stone\":500,\"gold\":500}")
   resourceProductionRates Json     @default("{\"food\":10,\"wood\":10,\"stone\":10,\"gold\":8}")
   lastCollectedAt         DateTime @default(now())
-  combatState             Json     @default("{}")
+
+  race RaceName?
+  combatState Json? 
+
+  buildings     Building[]
+  troops        Troop[]
+  tile          Tile?
+  tasks         ConstructionTask[]
+  trainingTasks TrainingTask[]
+  armyMovements ArmyMovement[]
+}
+
+model Building {
+  id        String       @id @default(uuid())
+  villageId String
+  village   Village      @relation(fields: [villageId], references: [id])
+  type      BuildingType
+  level     Int          @default(0)
+
+  status      String    @default("idle")
+  queuedUntil DateTime?
+  name        String    @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks ConstructionTask[]
+}
+
+model ConstructionTask {
+  id         String       @id @default(uuid())
+  villageId  String
+  buildingId String
+  type       BuildingType
+  level      Int
+  status     String       @default("in_progress")
+
+  startTime DateTime  @default(now())
+  endTime   DateTime?
+
+  building Building @relation(fields: [buildingId], references: [id])
+  village  Village  @relation(fields: [villageId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Troop {
+  id        String @id @default(uuid())
+  villageId String
+  troopType String
+  quantity  Int    @default(0)
+  status    String @default("idle")
+
+  trainingTasks TrainingTask[]
+  Village       Village        @relation(fields: [villageId], references: [id])
+
+  @@unique([villageId, troopType, status])
+}
+
+model TrainingTask {
+  id           String       @id @default(uuid())
+  villageId    String
+  troopId      String
+  troopType    String
+  buildingType BuildingType
+  count        Int
+  remaining    Int
+  status       String
+  startTime    DateTime?
+  endTime      DateTime?
+  queueJobId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Troop   Troop   @relation(fields: [troopId], references: [id])
+  Village Village @relation(fields: [villageId], references: [id])
+}
+
+model Tile {
+  id   String    @id @default(uuid())
+  x    Int
+  y    Int
+  type TileType
+  race RaceName?
+
+  villageId String?  @unique
+  village   Village? @relation(fields: [villageId], references: [id], map: "Tile_villageId_fkey")
+
+  outpostId String?  @unique
+  outpost   Outpost? @relation(fields: [outpostId], references: [id], map: "Tile_outpostId_fkey")
+
+  createdAt DateTime @default(now())
+
+  @@unique([x, y])
+  @@index([race])
+}
+
+enum TileType {
+  VILLAGE
+  OUTPOST
+  EMPTY
+  SHRINE
+}
+
+
+model Battle {
+  id               String   @id @default(uuid())
+  attackerVillageId String
+  defenderVillageId String?
+  originX          Int
+  originY          Int
+  targetX          Int
+  targetY          Int
+  troops           Json
+  startTime        DateTime
+  arrivalTime      DateTime
+  status           String
+  createdAt        DateTime @default(now())
+  resolvedAt       DateTime? 
+  report           BattleReport?
+}
+
+model BattleReport {
+  battleId         String   @id
+  outcome          String
+  attackerLosses   Json
+  defenderLosses   Json
+  loot             Json
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  battle           Battle   @relation(fields: [battleId], references: [id])
+}
+
+model ArmyMovement {
+  id        String   @id @default(uuid())
+  villageId String
+  village   Village  @relation(fields: [villageId], references: [id])
+  direction String
+  battleId  String
+  originX   Int
+  originY   Int
+  targetX   Int
+  targetY   Int
+  troops    Json
+  arrivalTime DateTime
+  createdAt DateTime @default(now())
 }

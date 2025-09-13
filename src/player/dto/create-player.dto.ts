@@ -19,13 +19,6 @@ export class CreatePlayerDto {
   email: string;
 
   @ApiProperty({
-    description: 'Race of the player',
-    example: 'HUMAN',
-  })
-  @IsString()
-  race: string;
-
-  @ApiProperty({
     description: 'Password of the player',
     example: 'strongPassword123',
     minLength: 6,
@@ -33,4 +26,7 @@ export class CreatePlayerDto {
   @IsString()
   @MinLength(6)
   password: string;
+  
+  @IsString()
+  raceId: string; // must be a valid Race.id
 }
