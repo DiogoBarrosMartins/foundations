@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  race      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  playerId  String?
+  username  String
+  channel   String
+  text      String
+  createdAt DateTime @default(now())
+}
+
+model Village {
+  id        String   @id @default(uuid())
+  name      String
+  playerId  String
+  playerName String
+  x         Int?
+  y         Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  resourceAmounts         Json     @default("{\"food\":500,\"wood\":500,\"stone\":500,\"gold\":500}")
+  resourceProductionRates Json     @default("{\"food\":10,\"wood\":10,\"stone\":10,\"gold\":8}")
+  lastCollectedAt         DateTime @default(now())
+  combatState             Json     @default("{}")
+}

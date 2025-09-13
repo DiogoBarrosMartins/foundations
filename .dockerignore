@@ -1,0 +1,22 @@
+# Node stuff
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build output
+dist
+coverage
+
+# Configs locais
+.env
+docker-compose.override.yml
+Dockerfile*
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+
+# Git
+.git
+.gitignore
