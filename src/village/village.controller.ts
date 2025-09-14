@@ -12,7 +12,16 @@ import { Village } from '@prisma/client';
 @Controller('villages')
 export class VillageController {
   constructor(private readonly villageService: VillageService) {}
-
+  
+ @Get()
+  @ApiOperation({ summary: 'Get all villages in the world' })
+  @ApiOkResponse({
+    description: 'Array of all villages',
+    isArray: true,
+  })
+  async findAll(): Promise<Village[]> {
+    return this.villageService.findAll();
+  }
   @Get('/:playerId')
   @ApiOperation({ summary: 'Get all villages for a given player' })
   @ApiParam({

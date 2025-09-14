@@ -1,5 +1,6 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { RaceName } from '@prisma/client';
 
 export class CreatePlayerDto {
   @ApiProperty({
@@ -26,7 +27,12 @@ export class CreatePlayerDto {
   @IsString()
   @MinLength(6)
   password: string;
-  
-  @IsString()
-  raceId: string; // must be a valid Race.id
+
+  @ApiProperty({
+    description: 'Race of the player',
+    enum: RaceName,
+    example: RaceName.HUMAN,
+  })
+  @IsEnum(RaceName)
+  race: RaceName;
 }

@@ -5,15 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateVillageDto } from './dto/create-village.dto';
-
+import { Race } from 'src/game/constants/race.constants';
 import { ResourceService } from '../resource/resource.service';
 import { BuildingService } from '../building/building.service';
 import { TrainingService } from '../training/training.service';
 import { ValidatedBattlePayload } from 'src/game/constants/combat.type';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AttackRequestDto } from '../combat/dto/attack-request.dto';
-import { Village, TrainingTask, RaceName, BuildingType } from '@prisma/client';
-
+import { Village, TrainingTask, BuildingType } from '@prisma/client';
+import { OnEvent } from '@nestjs/event-emitter';
 type CombatState = {
   outgoing: any[];
   incoming: any[];
@@ -30,6 +30,34 @@ export class VillageService {
     private readonly trainingService: TrainingService,
   ) {
     this.logger.log('[VillageService] Constructed');
+  }
+
+  @OnEvent('player.created') // 👂 Ouve evento
+  async handlePlayerCreated(payload: {
+    playerId: string;
+    playerName: string;
+    race: Race;
+    name: string;
+  }) {
+    this.logger.log(`[VillageService] Creating village for player ${payload.playerName}`);
+
+    const village = await this.prisma.village.create({
+      data: {
+        playerId: payload.playerId,
+        playerName: payload.playerName,
+        name: payload.name,
+        x: Math.floor(Math.random() * 100),
+        y: Math.floor(Math.random() * 100),
+        resourceAmounts: { food: 500, wood: 500, stone: 500, gold: 500 },
+        resourceProductionRates: { food: 10, wood: 10, stone: 10, gold: 8 },
+        lastCollectedAt: new Date(),
+        race: payload.race,
+      },
+    });
+
+    await this.buildingService.initializeBuildingsForVillage(village.id, payload.race);
+
+    return { village };
   }
 
   async create(dto: CreateVillageDto) {
@@ -55,13 +83,13 @@ export class VillageService {
           gold: 8,
         },
         lastCollectedAt: new Date(),
-        race: dto.race as RaceName,
+        race: dto.race as Race,
       },
     });
 
     await this.buildingService.initializeBuildingsForVillage(
       village.id,
-      dto.race as RaceName,
+      dto.race as Race,
     );
 
     return village;
@@ -113,22 +141,39 @@ export class VillageService {
           gold: 8,
         },
         lastCollectedAt: new Date(),
-        race: data.race as RaceName,
+        race: data.race as Race,
       },
     });
 
     await this.buildingService.initializeBuildingsForVillage(
       village.id,
-      data.race as RaceName,
+      data.race as Race,
     );
 
     return village;
   }
 
-  findAll() {
-    this.logger.log('[VillageService] findAll called');
-    return this.prisma.village.findMany();
-  }
+async findAll() {
+  this.logger.log('[VillageService] findAll called');
+
+  const villages = await this.prisma.village.findMany();
+
+  await Promise.all(
+    villages.map((v) => this.resourceService.getResources(v.id)),
+  );
+
+  return this.prisma.village.findMany({
+    include: {
+      buildings: true,
+      troops: true,
+      trainingTasks: {
+        where: { status: { not: 'completed' } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+}
+
 
   async findByPlayer(playerId: string): Promise<Village[]> {
     this.logger.log('[VillageService] Finding villages for player:', playerId);
@@ -228,11 +273,11 @@ export class VillageService {
 
     const village = villageId
       ? await this.prisma.village.findUniqueOrThrow({
-          where: { id: villageId },
-        })
+        where: { id: villageId },
+      })
       : await this.prisma.village.findFirstOrThrow({
-          where: { x: coords!.x, y: coords!.y },
-        });
+        where: { x: coords!.x, y: coords!.y },
+      });
 
     const state: CombatState =
       (village as any).combatState || { outgoing: [], incoming: [] };

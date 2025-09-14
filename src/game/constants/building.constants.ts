@@ -1,4 +1,4 @@
-import { Race } from "./race.constants";
+import { RaceName } from '@prisma/client';
 
 export enum BuildingType {
   SAWMILL = 'SAWMILL',
@@ -19,33 +19,30 @@ export enum BuildingType {
   SHRINE = 'SHRINE',
 }
 
-export const BUILDING_NAMES: Record<Race, Record<BuildingType, string>> = {
-  [Race.HUMAN]: {
+export const BUILDING_NAMES: Record<RaceName, Record<BuildingType, string>> = {
+  [RaceName.HUMAN]: {
     [BuildingType.SAWMILL]: 'Lumber Mill',
     [BuildingType.CLAY_PIT]: 'Brickworks',
     [BuildingType.IRON_MINE]: 'Ironworks',
     [BuildingType.FARM]: 'Farmland',
 
-    // … storage …
     [BuildingType.WAREHOUSE]: 'Storage Barn',
     [BuildingType.GRANARY]: 'Granary',
     [BuildingType.MARKET]: 'Market Square',
 
-    // … military …
     [BuildingType.BARRACKS]: 'Barracks',
     [BuildingType.STABLE]: 'Stables',
     [BuildingType.WORKSHOP]: 'Siege Workshop',
     [BuildingType.WALL]: 'Stone Wall',
     [BuildingType.TOWER]: 'Watchtower',
 
-    // … special …
     [BuildingType.SMITHY]: 'Blacksmith',
     [BuildingType.EMBASSY]: 'Embassy',
     [BuildingType.ACADEMY]: 'Academy',
     [BuildingType.SHRINE]: 'Shrine of Kings',
   },
 
-  [Race.ORC]: {
+  [RaceName.ORC]: {
     [BuildingType.SAWMILL]: 'Warwood Camp',
     [BuildingType.CLAY_PIT]: 'Mud Pits',
     [BuildingType.IRON_MINE]: 'Bone Mine',
@@ -64,7 +61,7 @@ export const BUILDING_NAMES: Record<Race, Record<BuildingType, string>> = {
     [BuildingType.SHRINE]: 'Sacrificial Altar',
   },
 
-  [Race.ELF]: {
+  [RaceName.ELF]: {
     [BuildingType.SAWMILL]: 'Grove of Saws',
     [BuildingType.CLAY_PIT]: 'Clay Hollow',
     [BuildingType.IRON_MINE]: 'Silver Vein',
@@ -83,7 +80,7 @@ export const BUILDING_NAMES: Record<Race, Record<BuildingType, string>> = {
     [BuildingType.SHRINE]: 'Grove Shrine',
   },
 
-  [Race.DWARF]: {
+  [RaceName.DWARF]: {
     [BuildingType.SAWMILL]: 'Stonecut Mill',
     [BuildingType.CLAY_PIT]: 'Ore Pit',
     [BuildingType.IRON_MINE]: 'Deep Iron Mine',
@@ -102,7 +99,7 @@ export const BUILDING_NAMES: Record<Race, Record<BuildingType, string>> = {
     [BuildingType.SHRINE]: 'Hall of Stones',
   },
 
-  [Race.UNDEAD]: {
+  [RaceName.UNDEAD]: {
     [BuildingType.SAWMILL]: 'Bone Mill',
     [BuildingType.CLAY_PIT]: 'Ghoul Pits',
     [BuildingType.IRON_MINE]: 'Necromine',
@@ -121,6 +118,7 @@ export const BUILDING_NAMES: Record<Race, Record<BuildingType, string>> = {
     [BuildingType.SHRINE]: 'Shrine of the Damned',
   },
 };
+
 export interface BuildingCost {
   food: number;
   wood: number;

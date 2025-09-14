@@ -6,6 +6,8 @@ export enum Race {
   UNDEAD = 'UNDEAD',
 }
 
+export type RaceName = keyof typeof Race;
+
 export enum OutpostType {
   RESOURCE = 'RESOURCE',
   FORWARD = 'FORWARD',

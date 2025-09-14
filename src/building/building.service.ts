@@ -20,19 +20,35 @@ export class BuildingService {
   /**
    * Initialize all buildings for a new village
    */
-  async initializeBuildingsForVillage(villageId: string, race: RaceName) {
-    const buildingTypes = Object.values(BuildingType);
+ async initializeBuildingsForVillage(villageId: string, race: RaceName) {
+  if (!BUILDING_NAMES[race]) {
+    throw new BadRequestException(
+      `Invalid race "${race}" passed to initializeBuildingsForVillage`,
+    );
+  }
 
-    const buildings = buildingTypes.map((type) => ({
+  const buildingTypes = Object.values(BuildingType);
+
+  const buildings = buildingTypes.map((type) => {
+    const buildingName = BUILDING_NAMES[race][type];
+    if (!buildingName) {
+      throw new BadRequestException(
+        `No building name defined for race ${race}, type ${type}`,
+      );
+    }
+
+    return {
       villageId,
       type,
       level: 0,
       status: 'idle',
-      name: BUILDING_NAMES[race][type],
-    }));
+      name: buildingName,
+    };
+  });
 
-    await this.prisma.building.createMany({ data: buildings });
-  }
+  await this.prisma.building.createMany({ data: buildings });
+}
+
 
   /**
    * Upgrade a building

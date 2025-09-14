@@ -12,12 +12,15 @@ import { PlayerModule } from './player/player.module';
 import { TroopModule } from './troops/troops.module';
 import { ResourceModule } from './resource/resource.module';
 import { CombatModule } from './combat/combat.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { WorldModule } from './world/world.module';
 
 @Module({
   imports: [
     SocketModule,
     PrismaModule,
     BuildingModule,
+    EventEmitterModule.forRoot(),
     ConstructionModule,
     VillageModule,
     PlayerModule,
@@ -25,6 +28,7 @@ import { CombatModule } from './combat/combat.module';
     ResourceModule,
     CombatModule,
     TrainingModule,
+    WorldModule,
     BullModule.forRoot({
       connection: {
         host: process.env.REDIS_HOST || 'localhost',

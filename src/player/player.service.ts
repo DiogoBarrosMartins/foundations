@@ -9,6 +9,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePlayerDto } from './dto/create-player.dto';
 import { UpdatePlayerDto } from './dto/update-player.dto';
 import { LoginPlayerDto } from './dto/login-player.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 interface JwtPayload {
   sub: string;
@@ -16,7 +17,10 @@ interface JwtPayload {
 
 @Injectable()
 export class PlayerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   private generateToken(playerId: string): string {
     return jwt.sign({ sub: playerId }, process.env.JWT_SECRET!, {
@@ -55,12 +59,22 @@ export class PlayerService {
     const player = await this.prisma.player.create({
       data: {
         username: dto.username,
+        email: dto.email,
         password: hashedPassword,
-        raceId: dto.raceId,
+        race: dto.race, // ✅ enum direto
       },
     });
 
     const token = this.generateToken(player.id);
+
+    // 🔥 Dispara evento
+    this.eventEmitter.emit('player.created', {
+      playerId: player.id,
+      playerName: player.username,
+      race: player.race, // ✅ já vem do enum
+      name: `${player.username}'s Village`,
+    });
+
     return { player, token };
   }
 
@@ -95,7 +109,7 @@ export class PlayerService {
 
     if (dto.username) data.username = dto.username;
     if (dto.password) data.password = await hash(dto.password, 10);
-    if (dto.raceId) data.raceId = dto.raceId;
+    if (dto.race) data.race = dto.race; // ✅ já não é raceId
 
     return this.prisma.player.update({
       where: { id },

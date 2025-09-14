@@ -24,26 +24,21 @@ enum RaceName {
   UNDEAD
 }
 
-model Race {
-  id          String   @id @default(uuid())
-  name        RaceName @unique
-  description String
-  traits      Json
-  hubX        Int?
-  hubY        Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  outposts Outpost[]
-  players  Player[]
+enum TileType {
+  VILLAGE
+  OUTPOST
+  EMPTY
+  SHRINE
 }
 
 model Player {
   id        String    @id @default(uuid())
   username  String    @unique
   password  String
-  raceId    String?
-  race      Race?     @relation(fields: [raceId], references: [id])
+email     String?   @unique(map: "unique_player_email")
+
+race RaceName @default(HUMAN)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -52,8 +47,8 @@ model Player {
 
 model Outpost {
   id        String   @id @default(uuid())
-  raceId    String
-  race      Race     @relation(fields: [raceId], references: [id], onDelete: Cascade)
+race RaceName @default(HUMAN)
+
   name      String
   type      String
   x         Int
@@ -61,9 +56,56 @@ model Outpost {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tile Tile?
+  tileId    String?   @unique
+  tile      Tile?     @relation("OutpostTile", fields: [tileId], references: [id])
+}
 
-  @@index([raceId])
+model Village {
+  id        String   @id @default(uuid())
+  name      String
+  playerId  String
+  playerName String?
+  player    Player   @relation(fields: [playerId], references: [id])
+  x         Int
+  y         Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  resolvedAt      DateTime? 
+  resourceAmounts         Json     @default("{\"food\":500,\"wood\":500,\"stone\":500,\"gold\":500}")
+  resourceProductionRates Json     @default("{\"food\":10,\"wood\":10,\"stone\":10,\"gold\":8}")
+  lastCollectedAt         DateTime @default(now())
+
+race RaceName @default(HUMAN)
+
+  combatState Json? 
+
+  buildings     Building[]
+  troops        Troop[]
+  tileId        String?   @unique
+  tile          Tile?     @relation("VillageTile", fields: [tileId], references: [id])
+  tasks         ConstructionTask[]
+  trainingTasks TrainingTask[]
+  armyMovements ArmyMovement[]
+}
+
+model Tile {
+  id         String   @id @default(uuid())
+  x          Int
+  y          Int
+  type       TileType
+  race       RaceName?
+  name       String?
+  playerId   String?
+  playerName String?
+  metadata   Json?
+
+  worldId    String?
+  world      World?    @relation("WorldTiles", fields: [worldId], references: [id])
+
+  outpost    Outpost?  @relation("OutpostTile")
+  village    Village?  @relation("VillageTile")
+
+  @@unique([x, y], name: "x_y")
 }
 
 enum BuildingType {
@@ -83,32 +125,6 @@ enum BuildingType {
   EMBASSY
   ACADEMY
   SHRINE
-}
-
-model Village {
-  id        String   @id @default(uuid())
-  name      String
-  playerId  String
-  playerName String?
-  player    Player   @relation(fields: [playerId], references: [id])
-  x         Int
-  y         Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
-  resolvedAt      DateTime? 
-  resourceAmounts         Json     @default("{\"food\":500,\"wood\":500,\"stone\":500,\"gold\":500}")
-  resourceProductionRates Json     @default("{\"food\":10,\"wood\":10,\"stone\":10,\"gold\":8}")
-  lastCollectedAt         DateTime @default(now())
-
-  race RaceName?
-  combatState Json? 
-
-  buildings     Building[]
-  troops        Troop[]
-  tile          Tile?
-  tasks         ConstructionTask[]
-  trainingTasks TrainingTask[]
-  armyMovements ArmyMovement[]
 }
 
 model Building {
@@ -179,32 +195,14 @@ model TrainingTask {
   Village Village @relation(fields: [villageId], references: [id])
 }
 
-model Tile {
-  id   String    @id @default(uuid())
-  x    Int
-  y    Int
-  type TileType
-  race RaceName?
-
-  villageId String?  @unique
-  village   Village? @relation(fields: [villageId], references: [id], map: "Tile_villageId_fkey")
-
-  outpostId String?  @unique
-  outpost   Outpost? @relation(fields: [outpostId], references: [id], map: "Tile_outpostId_fkey")
-
+model World {
+  id        String   @id @default(uuid())
+  name      String
+  size      Int
   createdAt DateTime @default(now())
 
-  @@unique([x, y])
-  @@index([race])
+  tiles     Tile[]   @relation("WorldTiles")
 }
-
-enum TileType {
-  VILLAGE
-  OUTPOST
-  EMPTY
-  SHRINE
-}
-
 
 model Battle {
   id               String   @id @default(uuid())
