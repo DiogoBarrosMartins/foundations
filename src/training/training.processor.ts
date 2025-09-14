@@ -12,7 +12,9 @@ export class TrainingProcessor {
   constructor(
     private prisma: PrismaService,
     private trainingService: TrainingService,
-  ) {}
+  ) {
+    this.logger.log('✅ TrainingProcessor inicializado');
+  }
 
   @Process('processTraining')
   async handleProcessTraining(job: Job<{ taskId: string }>) {
@@ -28,11 +30,14 @@ export class TrainingProcessor {
       return;
     }
 
-    // calcula unitTimeMs dinamicamente
-    const unitTimeMs =
-      (task.endTime.getTime() - task.startTime.getTime()) / task.count;
+ if (!task.startTime || !task.endTime) {
+  this.logger.error(`Task ${taskId} não tem startTime ou endTime definidos!`);
+  return;
+}
 
-    // adiciona 1 tropa
+const unitTimeMs =
+  (task.endTime.getTime() - task.startTime.getTime()) / task.count;
+
     await this.prisma.troop.update({
       where: { id: task.troopId },
       data: { quantity: { increment: 1 } },
@@ -46,16 +51,13 @@ export class TrainingProcessor {
         data: { remaining: newRemaining },
       });
 
-      // agenda próximo tick
       await job.queue.add(
         'processTraining',
         { taskId },
         { delay: unitTimeMs },
       );
 
-      this.logger.log(
-        `⏳ Task ${task.id}: faltam ${newRemaining} unidades`,
-      );
+      this.logger.log(`⏳ Task ${task.id}: faltam ${newRemaining} unidades`);
     } else {
       await this.prisma.trainingTask.update({
         where: { id: task.id },

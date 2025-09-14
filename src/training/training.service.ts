@@ -99,28 +99,34 @@ export class TrainingService {
     await this.triggerNextTaskIfAvailable(task.villageId);
   }
 
-  async triggerNextTaskIfAvailable(villageId: string) {
-    const hasInProgress = await this.prisma.trainingTask.findFirst({
-      where: { villageId, status: 'in_progress' },
-    });
-    if (hasInProgress) return;
+async triggerNextTaskIfAvailable(villageId: string) {
+  const hasInProgress = await this.prisma.trainingTask.findFirst({
+    where: { villageId, status: 'in_progress' },
+  });
+  if (hasInProgress) return;
 
-    const next = await this.prisma.trainingTask.findFirst({
-      where: { villageId, status: 'pending' },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (!next) return;
+  const next = await this.prisma.trainingTask.findFirst({
+    where: { villageId, status: 'pending' },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!next) return;
+
+  if (!next.endTime) {
+    // recalcula endTime agora que vai arrancar
+    const def = TROOP_TYPES[next.troopType];
+    const unitTimeMs = def.buildTime * 1000;
+    const endTime = new Date(Date.now() + unitTimeMs * next.count);
 
     await this.prisma.trainingTask.update({
       where: { id: next.id },
-      data: { status: 'in_progress', startTime: new Date() },
+      data: {
+        status: 'in_progress',
+        startTime: new Date(),
+        endTime,
+      },
     });
 
-    const unitTimeMs = Math.floor(
-      (next.endTime.getTime() - Date.now()) / next.count,
-    );
     const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
-
     await this.prisma.trainingTask.update({
       where: { id: next.id },
       data: { queueJobId: job.id?.toString() ?? null },
@@ -132,7 +138,35 @@ export class TrainingService {
       count: next.count,
       taskId: next.id,
     });
+
+    return;
   }
+
+  // caso já tenha endTime (fallback)
+  const unitTimeMs = Math.floor(
+    (next.endTime.getTime() - Date.now()) / next.count,
+  );
+
+  await this.prisma.trainingTask.update({
+    where: { id: next.id },
+    data: { status: 'in_progress', startTime: new Date() },
+  });
+
+  const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
+
+  await this.prisma.trainingTask.update({
+    where: { id: next.id },
+    data: { queueJobId: job.id?.toString() ?? null },
+  });
+
+  this.eventEmitter.emit('troop.training.started', {
+    villageId,
+    troopType: next.troopType,
+    count: next.count,
+    taskId: next.id,
+  });
+}
+
 
   async cancelTask(taskId: string) {
     this.logger.warn(`[cancelTask] Task ${taskId}`);
