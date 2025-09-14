@@ -174,98 +174,15 @@ export class VillageService {
       },
     });
   }
+async getVillageDetails(villageId: string) {
+  return this.refreshVillageState(villageId);
+}
 
-  async findByPlayer(playerId: string): Promise<Village[]> {
-    this.logger.log('[VillageService] Finding villages for player:', playerId);
+async findByPlayer(playerId: string) {
+  const villages = await this.prisma.village.findMany({ where: { playerId } });
+  return Promise.all(villages.map((v) => this.refreshVillageState(v.id)));
+}
 
-    const villages = await this.prisma.village.findMany({
-      where: { playerId },
-    });
-
-    if (villages.length === 0) {
-      this.logger.warn('[VillageService] No villages found for player:', playerId);
-      throw new NotFoundException(`No villages found for player ${playerId}`);
-    }
-
-    await Promise.all(
-      villages.map((v) => this.resourceService.getResources(v.id)),
-    );
-
-    const now = new Date();
-    const villageIds = villages.map((v) => v.id);
-    const tasksToForce = await this.prisma.trainingTask.findMany({
-      where: {
-        status: 'in_progress',
-        endTime: { lte: now },
-        villageId: { in: villageIds },
-      },
-    });
-
-    if (tasksToForce.length > 0) {
-      this.logger.log(
-        `[VillageService] Forcing completion of ${tasksToForce.length} expired training tasks`,
-      );
-
-      await Promise.all(
-        tasksToForce.map((task) =>
-          this.trainingService.forceCompleteTask(task.id),
-        ),
-      );
-    } else {
-      for (const villageId of villageIds) {
-        const hasInProgress = await this.prisma.trainingTask.findFirst({
-          where: { villageId, status: 'in_progress' },
-        });
-
-        const hasPending = await this.prisma.trainingTask.findFirst({
-          where: { villageId, status: 'pending' },
-        });
-
-        if (!hasInProgress && hasPending) {
-          this.logger.log(
-            `[VillageService] No in_progress task for ${villageId}, activating pending task`,
-          );
-          await this.trainingService.triggerNextTaskIfAvailable(villageId);
-        }
-      }
-    }
-
-    const expiredBuildings = await this.prisma.building.findMany({
-      where: {
-        villageId: { in: villageIds },
-        status: 'queued',
-        queuedUntil: { lte: now },
-      },
-    });
-
-    for (const building of expiredBuildings) {
-      this.logger.log(
-        `[VillageService] Auto-completing expired building ${building.type} for village ${building.villageId}`,
-      );
-
-      await this.prisma.building.update({
-        where: { id: building.id },
-        data: { level: building.level + 1, status: 'idle', queuedUntil: null },
-      });
-
-      await this.prisma.constructionTask.updateMany({
-        where: { buildingId: building.id, status: 'in_progress' },
-        data: { status: 'completed' },
-      });
-    }
-
-    return this.prisma.village.findMany({
-      where: { playerId },
-      include: {
-        buildings: true,
-        troops: true,
-        trainingTasks: {
-          where: { status: { not: 'completed' } },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    });
-  }
 
   async remove(id: string) {
     this.logger.log('[VillageService] Removing village with ID:', id);
@@ -322,79 +239,93 @@ export class VillageService {
       village.id,
     );
   }
+async refreshVillageState(villageId: string) {
+  this.logger.log(`[VillageService] Refreshing state for village ${villageId}`);
 
-  async getVillageDetails(villageId: string) {
-    this.logger.log(`[getVillageDetails] Fetching details for ${villageId}`);
+  const village = await this.prisma.village.findUniqueOrThrow({
+    where: { id: villageId },
+    include: {
+      trainingTasks: true,
+      buildings: true,
+      troops: true,
+    },
+  });
 
-    const village = await this.prisma.village.findUnique({
-      where: { id: villageId },
-      include: {
-        trainingTasks: {
-          where: { status: 'in_progress' },
-        },
-        troops: true,
-        buildings: true,
+  const now = new Date();
+
+  // 1️⃣ Atualizar recursos
+  await this.resourceService.getResources(villageId);
+
+  // 2️⃣ Completar treinos expirados
+  const expiredTasks = village.trainingTasks.filter(
+    (t) => t.status === 'in_progress' && t.endTime && new Date(t.endTime) <= now,
+  );
+
+  for (const task of expiredTasks) {
+    this.logger.log(
+      `[VillageService] Completing expired training task ${task.id} for village ${villageId}`,
+    );
+    await this.trainingService.forceCompleteTask(task.id);
+  }
+
+  // Se não há task in_progress, ativar a próxima pending
+  const hasInProgress = await this.prisma.trainingTask.findFirst({
+    where: { villageId, status: 'in_progress' },
+  });
+  if (!hasInProgress) {
+    const nextPending = await this.prisma.trainingTask.findFirst({
+      where: { villageId, status: 'pending' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (nextPending) {
+      this.logger.log(
+        `[VillageService] Triggering next training task ${nextPending.id}`,
+      );
+      await this.trainingService.triggerNextTaskIfAvailable(villageId);
+    }
+  }
+
+  // 3️⃣ Completar construções expiradas
+  const expiredBuildings = village.buildings.filter(
+    (b) =>
+      b.status === 'queued' &&
+      b.queuedUntil &&
+      new Date(b.queuedUntil) <= now,
+  );
+
+  for (const building of expiredBuildings) {
+    this.logger.log(
+      `[VillageService] Completing building upgrade ${building.type} for village ${villageId}`,
+    );
+    await this.prisma.building.update({
+      where: { id: building.id },
+      data: {
+        level: building.level + 1,
+        status: 'idle',
+        queuedUntil: null,
       },
     });
 
-    if (!village) {
-      this.logger.warn(`[getVillageDetails] Not found: ${villageId}`);
-      throw new NotFoundException(`Village ${villageId} not found`);
-    }
-
-    const now = new Date();
-
-    const expiredTasks = village.trainingTasks.filter(
-      (t) => t.endTime && new Date(t.endTime) <= now,
-    );
-
-    if (expiredTasks.length > 0) {
-      this.logger.warn(
-        `[getVillageDetails] ${expiredTasks.length} expired training tasks found`,
-      );
-
-      for (const task of expiredTasks) {
-        await this.trainingService.forceCompleteTask(task.id);
-      }
-
-      return this.getVillageDetails(villageId);
-    }
-
-    const expiredBuildings = village.buildings.filter(
-      (b) => b.status === 'queued' && b.queuedUntil && new Date(b.queuedUntil) <= now,
-    );
-
-    if (expiredBuildings.length > 0) {
-      this.logger.warn(
-        `[getVillageDetails] ${expiredBuildings.length} expired buildings found`,
-      );
-
-      for (const building of expiredBuildings) {
-        await this.prisma.building.update({
-          where: { id: building.id },
-          data: { level: building.level + 1, status: 'idle', queuedUntil: null },
-        });
-
-        await this.prisma.constructionTask.updateMany({
-          where: { buildingId: building.id, status: 'in_progress' },
-          data: { status: 'completed' },
-        });
-      }
-
-      return this.getVillageDetails(villageId);
-    }
-
-    return {
-      id: village.id,
-      x: village.x,
-      y: village.y,
-      playerId: village.playerId,
-      troops: village.troops.map((t) => ({
-        troopType: t.troopType,
-        quantity: t.quantity,
-      })),
-    };
+    await this.prisma.constructionTask.updateMany({
+      where: { buildingId: building.id, status: 'in_progress' },
+      data: { status: 'completed' },
+    });
   }
+
+  // 4️⃣ Recarregar aldeia já consistente
+  return this.prisma.village.findUniqueOrThrow({
+    where: { id: villageId },
+    include: {
+      buildings: true,
+      troops: true,
+      trainingTasks: {
+        where: { status: { not: 'completed' } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+}
+
 
 
   async createArmyMovement(payload: {
