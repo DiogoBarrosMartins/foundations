@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { CreateVillageDto } from './dto/create-village.dto';
 import { Race } from 'src/game/constants/race.constants';
@@ -153,26 +154,26 @@ export class VillageService {
     return village;
   }
 
-async findAll() {
-  this.logger.log('[VillageService] findAll called');
+  async findAll() {
+    this.logger.log('[VillageService] findAll called');
 
-  const villages = await this.prisma.village.findMany();
+    const villages = await this.prisma.village.findMany();
 
-  await Promise.all(
-    villages.map((v) => this.resourceService.getResources(v.id)),
-  );
+    await Promise.all(
+      villages.map((v) => this.resourceService.getResources(v.id)),
+    );
 
-  return this.prisma.village.findMany({
-    include: {
-      buildings: true,
-      troops: true,
-      trainingTasks: {
-        where: { status: { not: 'completed' } },
-        orderBy: { createdAt: 'asc' },
+    return this.prisma.village.findMany({
+      include: {
+        buildings: true,
+        troops: true,
+        trainingTasks: {
+          where: { status: { not: 'completed' } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
-    },
-  });
-}
+    });
+  }
 
 
   async findByPlayer(playerId: string): Promise<Village[]> {

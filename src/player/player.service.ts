@@ -20,7 +20,27 @@ export class PlayerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
+  async me(playerId: string) {
+  return this.prisma.player.findUnique({
+    where: { id: playerId },
+    select: {
+      id: true,
+      username: true,
+      race: true,
+      villages: {
+        include: {
+          buildings: true,
+          troops: true,
+          trainingTasks: {
+            where: { status: { not: 'completed' } },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      },
+    },
+  });
+}
 
   private generateToken(playerId: string): string {
     return jwt.sign({ sub: playerId }, process.env.JWT_SECRET!, {

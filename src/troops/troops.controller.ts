@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Param, Body, ParseUUIDPipe, Get } from '@nestjs/common';
 import { TroopService } from './troops.service';
 import { CreateTroopDto } from './dto/create-troop.dto';
 
@@ -13,4 +13,9 @@ export class TroopsController {
   ) {
     return this.troopService.trainTroops(villageId, dto.troopType, dto.count);
   }
+    @Get('definitions')
+  async getTroopDefinitions(@Param('villageId') villageId: string) {
+    return this.troopService.getTroopDefinitions(villageId);
+  }
+  
 }

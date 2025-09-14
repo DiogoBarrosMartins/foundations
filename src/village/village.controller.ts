@@ -22,6 +22,7 @@ export class VillageController {
   async findAll(): Promise<Village[]> {
     return this.villageService.findAll();
   }
+  
   @Get('/:playerId')
   @ApiOperation({ summary: 'Get all villages for a given player' })
   @ApiParam({

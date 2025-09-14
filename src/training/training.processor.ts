@@ -1,18 +1,17 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Processor, Process } from '@nestjs/bull';
+import type { Job } from 'bull';   // <-- agora do bull normal
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Processor('training')
 @Injectable()
-export class TrainingProcessor extends WorkerHost {
+export class TrainingProcessor {
   private readonly logger = new Logger(TrainingProcessor.name);
 
-  constructor(private prisma: PrismaService) {
-    super();
-  }
+  constructor(private prisma: PrismaService) {}
 
-  async process(job: Job<{ taskId: string }>): Promise<any> {
+  @Process()
+  async handle(job: Job<{ taskId: string }>): Promise<void> {
     const { taskId } = job.data;
     this.logger.log(`⚔️ Processing training task ${taskId}`);
 

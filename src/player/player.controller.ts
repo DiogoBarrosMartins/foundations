@@ -6,6 +6,8 @@ import {
   Param,
   Patch,
   Delete,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,12 +20,21 @@ import { CreatePlayerDto } from './dto/create-player.dto';
 import { UpdatePlayerDto } from './dto/update-player.dto';
 import { PlayerService } from './player.service';
 import { LoginPlayerDto } from './dto/login-player.dto';
+import { JwtAuthGuard } from 'src/auth/JwtAuthGuard';
 
 @ApiTags('Player')
 @Controller('players')
 export class PlayerController {
-  constructor(private readonly playerService: PlayerService) {}
+  constructor(private readonly playerService: PlayerService) { }
 
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get the currently logged-in player' })
+  @ApiResponse({ status: 200, description: 'Current player profile' })
+  me(@Req() req: any) {
+    return this.playerService.me(req.user.playerId);
+  }
   @Post()
   @ApiOperation({ summary: 'Create a new player' })
   @ApiBody({ type: CreatePlayerDto })
