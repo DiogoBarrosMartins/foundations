@@ -37,7 +37,7 @@ export class TrainingService {
     });
 
     const status = hasInProgress ? 'pending' : 'in_progress';
-    const startTime = status === 'in_progress' ? new Date() : null;
+    const startTime = new Date();
     const endTime = new Date(Date.now() + unitTimeMs * count)
 ;
 
