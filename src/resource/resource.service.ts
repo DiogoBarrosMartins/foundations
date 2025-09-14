@@ -1,7 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-
 import { SocketGateway } from '../socket/socket.gateway';
-
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Resources } from 'src/game/constants/resource.constants';
 
@@ -66,6 +64,27 @@ export class ResourceService {
       wood: Math.max(resources.wood - cost.wood, 0),
       stone: Math.max(resources.stone - cost.stone, 0),
       gold: Math.max(resources.gold - cost.gold, 0),
+    };
+
+    await this.prisma.village.update({
+      where: { id: villageId },
+      data: { resourceAmounts: updated },
+    });
+
+    this.socket.sendResourcesUpdate(villageId, updated);
+  }
+
+  /**
+   * Adiciona recursos à aldeia (usado em reembolsos, recompensas, etc.)
+   */
+  async addResources(villageId: string, gain: Resources): Promise<void> {
+    const resources = await this.getResources(villageId);
+
+    const updated: Resources = {
+      food: resources.food + gain.food,
+      wood: resources.wood + gain.wood,
+      stone: resources.stone + gain.stone,
+      gold: resources.gold + gain.gold,
     };
 
     await this.prisma.village.update({

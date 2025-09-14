@@ -1,21 +1,27 @@
+import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Injectable, Logger } from '@nestjs/common';
-
-import { Queue } from 'bullmq';
+import type { Queue } from 'bull';
 
 @Injectable()
 export class TrainingQueueService {
-  private readonly logger = new Logger(TrainingQueueService.name);
-
   constructor(@InjectQueue('training') private readonly trainingQueue: Queue) {}
 
-  async queueTraining(taskId: string, delayMs: number) {
-    this.logger.log(`[Queue] Enqueuing task ${taskId} (delay: ${delayMs}ms)`);
-
+  async queueTraining(taskId: string, unitTimeMs: number) {
     return this.trainingQueue.add(
-      'train',
-      { taskId },
-      { delay: delayMs, removeOnComplete: true, removeOnFail: false },
+      'processTraining',
+      { taskId, unitTimeMs },
+      {
+        delay: unitTimeMs,
+        attempts: 3,
+        backoff: 1000,
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
     );
+  }
+
+  async removeJob(jobId: string) {
+    const job = await this.trainingQueue.getJob(jobId);
+    if (job) await job.remove();
   }
 }

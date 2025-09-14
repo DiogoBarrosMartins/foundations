@@ -19,52 +19,40 @@ export class TroopService {
     });
     if (!village) throw new NotFoundException('Village not found');
 
-    const race = village.race; // HUMAN | ORC | ELF | DWARF | UNDEAD
+    const race = village.race;
     const buildings = village.buildings;
 
-    // filtra tropas pela raça
-    const troops = Object.values(TROOP_TYPES).filter(
-      (t) => t.race === race,
-    );
+    const troops = Object.values(TROOP_TYPES).filter((t) => t.race === race);
 
-    // marca se estão desbloqueadas
-    const result = troops.map((t) => {
-      const building = buildings.find((b) => b.type === t.buildingType);
-      const unlocked = !!building && building.level >= t.requiredLevel;
+    return {
+      troops: troops.map((t) => {
+        const building = buildings.find((b) => b.type === t.buildingType);
+        const unlocked = !!building && building.level >= t.requiredLevel;
 
-      return {
-        id: t.id,             // ex: "human_swordsman"
-        name: t.name,         // ex: "Swordsman"
-        type: t.type,         // ex: "Infantry"
-        tier: t.tier,
-        buildingType: t.buildingType,
-        requiredLevel: t.requiredLevel,
-        unlocked,
-      };
-    });
-
-    return { troops: result };
+        return {
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          tier: t.tier,
+          buildingType: t.buildingType,
+          requiredLevel: t.requiredLevel,
+          cost: t.cost,
+          duration: t.buildTime,
+          unlocked,
+        };
+      }),
+    };
   }
 
   async trainTroops(villageId: string, troopType: string, count: number) {
     const def = TROOP_TYPES[troopType];
     if (!def) throw new Error(`Troop type "${troopType}" invalid`);
 
-    // Usa a unique key composta em vez de id manual
     const troop = await this.prisma.troop.upsert({
       where: {
-        villageId_troopType_status: {
-          villageId,
-          troopType,
-          status: 'idle',
-        },
+        villageId_troopType_status: { villageId, troopType, status: 'idle' },
       },
-      create: {
-        villageId,
-        troopType,
-        quantity: 0,
-        status: 'idle',
-      },
+      create: { villageId, troopType, quantity: 0, status: 'idle' },
       update: {},
     });
 

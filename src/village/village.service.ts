@@ -175,7 +175,6 @@ export class VillageService {
     });
   }
 
-
   async findByPlayer(playerId: string): Promise<Village[]> {
     this.logger.log('[VillageService] Finding villages for player:', playerId);
 
@@ -194,7 +193,6 @@ export class VillageService {
 
     const now = new Date();
     const villageIds = villages.map((v) => v.id);
-
     const tasksToForce = await this.prisma.trainingTask.findMany({
       where: {
         status: 'in_progress',
@@ -230,6 +228,30 @@ export class VillageService {
           await this.trainingService.triggerNextTaskIfAvailable(villageId);
         }
       }
+    }
+
+    const expiredBuildings = await this.prisma.building.findMany({
+      where: {
+        villageId: { in: villageIds },
+        status: 'queued',
+        queuedUntil: { lte: now },
+      },
+    });
+
+    for (const building of expiredBuildings) {
+      this.logger.log(
+        `[VillageService] Auto-completing expired building ${building.type} for village ${building.villageId}`,
+      );
+
+      await this.prisma.building.update({
+        where: { id: building.id },
+        data: { level: building.level + 1, status: 'idle', queuedUntil: null },
+      });
+
+      await this.prisma.constructionTask.updateMany({
+        where: { buildingId: building.id, status: 'in_progress' },
+        data: { status: 'completed' },
+      });
     }
 
     return this.prisma.village.findMany({
@@ -311,6 +333,7 @@ export class VillageService {
           where: { status: 'in_progress' },
         },
         troops: true,
+        buildings: true,
       },
     });
 
@@ -320,17 +343,42 @@ export class VillageService {
     }
 
     const now = new Date();
+
     const expiredTasks = village.trainingTasks.filter(
       (t) => t.endTime && new Date(t.endTime) <= now,
     );
 
     if (expiredTasks.length > 0) {
       this.logger.warn(
-        `[getVillageDetails] ${expiredTasks.length} expired tasks found`,
+        `[getVillageDetails] ${expiredTasks.length} expired training tasks found`,
       );
 
       for (const task of expiredTasks) {
         await this.trainingService.forceCompleteTask(task.id);
+      }
+
+      return this.getVillageDetails(villageId);
+    }
+
+    const expiredBuildings = village.buildings.filter(
+      (b) => b.status === 'queued' && b.queuedUntil && new Date(b.queuedUntil) <= now,
+    );
+
+    if (expiredBuildings.length > 0) {
+      this.logger.warn(
+        `[getVillageDetails] ${expiredBuildings.length} expired buildings found`,
+      );
+
+      for (const building of expiredBuildings) {
+        await this.prisma.building.update({
+          where: { id: building.id },
+          data: { level: building.level + 1, status: 'idle', queuedUntil: null },
+        });
+
+        await this.prisma.constructionTask.updateMany({
+          where: { buildingId: building.id, status: 'in_progress' },
+          data: { status: 'completed' },
+        });
       }
 
       return this.getVillageDetails(villageId);
@@ -347,6 +395,7 @@ export class VillageService {
       })),
     };
   }
+
 
   async createArmyMovement(payload: {
     villageId: string;

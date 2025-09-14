@@ -184,8 +184,8 @@ model TrainingTask {
   count        Int
   remaining    Int
   status       String
-  startTime    DateTime?
-  endTime      DateTime?
+  startTime    DateTime
+  endTime      DateTime
   queueJobId   String?
 
   createdAt DateTime @default(now())
