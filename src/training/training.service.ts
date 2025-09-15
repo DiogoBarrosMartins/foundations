@@ -36,11 +36,10 @@ async startTraining(
   });
 
   const status = hasInProgress ? 'pending' : 'in_progress';
-  const startTime = status === 'in_progress' ? new Date() : null;
+  const startTime =  new Date() ;
   const endTime =
-    status === 'in_progress'
-      ? new Date(Date.now() + unitTimeMs * count)
-      : null;
+    new Date(Date.now() + unitTimeMs * count)
+      ;
 
   const task = await this.prisma.trainingTask.create({
     data: {
