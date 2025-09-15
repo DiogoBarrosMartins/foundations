@@ -241,6 +241,7 @@ export class VillageService {
       village.id,
     );
   }
+
   async refreshVillageState(villageId: string) {
     this.logger.log(`[VillageService] Refreshing state for village ${villageId}`);
 

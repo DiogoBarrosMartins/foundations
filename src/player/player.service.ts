@@ -5,11 +5,12 @@ import {
 } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import { hash, compare } from 'bcrypt';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlayerDto } from './dto/create-player.dto';
 import { UpdatePlayerDto } from './dto/update-player.dto';
 import { LoginPlayerDto } from './dto/login-player.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { VillageService } from '../village/village.service';
 
 interface JwtPayload {
   sub: string;
@@ -19,28 +20,32 @@ interface JwtPayload {
 export class PlayerService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly villageService: VillageService,
     private readonly eventEmitter: EventEmitter2,
   ) { }
   async me(playerId: string) {
-  return this.prisma.player.findUnique({
-    where: { id: playerId },
-    select: {
-      id: true,
-      username: true,
-      race: true,
-      villages: {
-        include: {
-          buildings: true,
-          troops: true,
-          trainingTasks: {
-            where: { status: { not: 'completed' } },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
+    const player = await this.prisma.player.findUnique({
+      where: { id: playerId },
+      select: {
+        id: true,
+        username: true,
+        race: true,
+        villages: true, // busca só ids para depois refrescar
       },
-    },
-  });
-}
+    });
+
+    if (!player) return null;
+
+    // Refrescar cada village para aplicar upgrades/treinos expirados
+    const villages = await Promise.all(
+      player.villages.map((v) => this.villageService.refreshVillageState(v.id)),
+    );
+
+    return {
+      ...player,
+      villages,
+    };
+  }
 
   private generateToken(playerId: string): string {
     return jwt.sign({ sub: playerId }, process.env.JWT_SECRET!, {
