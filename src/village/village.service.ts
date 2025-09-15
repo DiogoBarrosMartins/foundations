@@ -175,8 +175,10 @@ export class VillageService {
     });
   }
 async getVillageDetails(villageId: string) {
+  this.logger.log(`[VillageService] Fetching details for ${villageId}`);
   return this.refreshVillageState(villageId);
 }
+
 
 async findByPlayer(playerId: string) {
   const villages = await this.prisma.village.findMany({ where: { playerId } });
