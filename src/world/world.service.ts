@@ -34,6 +34,48 @@ export class WorldService {
   constructor(
     private readonly prisma: PrismaService,
   ) { }
+  // 🔥 Endpoint simplificado: devolve tiles já "prontos para render"
+  async getWorldMap() {
+    this.logger.log('[WorldService] getWorldMap called');
+
+    const tiles = await this.prisma.tile.findMany({
+      select: {
+        x: true,
+        y: true,
+        type: true,
+        name: true,
+        race: true,
+        playerName: true,
+      },
+    });
+
+    // Normalizar para o frontend (MapTile)
+    return tiles.map((t) => {
+      let mappedType: 'village' | 'outpost' | 'resource' | 'npc' = 'resource';
+
+      switch (t.type) {
+        case 'VILLAGE':
+          mappedType = 'village';
+          break;
+        case 'OUTPOST':
+          mappedType = 'outpost';
+          break;
+        case 'EMPTY':
+          mappedType = 'resource'; // ou deixas vazio, mas assim vês algo
+          break;
+        default:
+          mappedType = 'npc';
+      }
+
+      return {
+        x: t.x,
+        y: t.y,
+        type: mappedType,
+        name: t.name,
+        owner: t.playerName ?? undefined,
+      };
+    });
+  }
 
   async getAllTiles() {
     return this.prisma.tile.findMany({

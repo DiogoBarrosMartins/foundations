@@ -5,6 +5,12 @@ import { WorldService } from './world.service';
 export class WorldController {
   constructor(private readonly worldService: WorldService) {}
 
+  // 🔥 Novo endpoint para o frontend
+  @Get('map')
+  async getWorldMap() {
+    return this.worldService.getWorldMap();
+  }
+
   @Get('map/raw')
   async getRawTileMap() {
     return this.worldService.getAllTiles();

@@ -13,9 +13,11 @@ export interface FinishBuildPayload {
 @Injectable()
 export class ConstructionService {
   private readonly logger = new Logger(ConstructionService.name);
+
   constructor(
     @InjectQueue('construction') private readonly constructionQueue: Queue,
   ) {}
+
   async queueBuild(
     villageId: string,
     buildingId: string,
@@ -28,9 +30,17 @@ export class ConstructionService {
     await this.constructionQueue.add(
       'finishBuild',
       { villageId, buildingId, type, targetLevel } as FinishBuildPayload,
-      { delay: buildTimeMs, attempts: 3, backoff: 1000 });
-    this.logger.warn(
-      `[queueBuild] Ignorado no Render → ${type} vai para nível ${targetLevel} em ${buildTimeMs}ms`,
+      {
+        delay: buildTimeMs,
+        attempts: 3,
+        backoff: 1000,
+        removeOnComplete: true, // opcional: limpa jobs concluídos
+        removeOnFail: false,    // mantém falhados para debugging
+      },
+    );
+
+    this.logger.log(
+      `[queueBuild] Job enfileirado → ${type} vai para nível ${targetLevel} em ${buildTimeMs}ms`,
     );
   }
 }
