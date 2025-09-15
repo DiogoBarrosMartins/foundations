@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
 import { VillageService } from './village.service';
 import { VillageController } from './village.controller';
 
@@ -11,7 +10,6 @@ import { TrainingModule } from '../training/training.module';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'construction' }),
     forwardRef(() => BuildingModule),
     forwardRef(() => ConstructionModule),
     ResourceModule,

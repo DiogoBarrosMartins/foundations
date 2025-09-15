@@ -7,7 +7,6 @@ import { ConstructionModule } from './construction/construction.module';
 import { VillageModule } from './village/village.module';
 import { TrainingModule } from './training/training.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { BullModule } from '@nestjs/bull';
 
 import { PlayerModule } from './player/player.module';
 import { TroopModule } from './troops/troops.module';
@@ -30,12 +29,7 @@ import { WorldModule } from './world/world.module';
     CombatModule,
     TrainingModule,
     WorldModule,
-    BullModule.forRoot({
-      redis: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      },
-    }),
+
   ],
   controllers: [AppController],
   providers: [AppService],
