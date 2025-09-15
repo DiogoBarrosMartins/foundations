@@ -22,13 +22,13 @@ type CombatState = {
 @Injectable()
 export class VillageService {
   private readonly logger = new Logger(VillageService.name);
-  constructionProcessor: ConstructionProcessor;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly resourceService: ResourceService,
     private readonly buildingService: BuildingService,
     private readonly trainingService: TrainingService,
+    private readonly constructionProcessor: ConstructionProcessor,
   ) {
     this.logger.log('[VillageService] Constructed');
   }

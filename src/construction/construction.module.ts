@@ -12,6 +12,6 @@ import { BuildingModule } from '../building/building.module';
     forwardRef(() => BuildingModule),
   ],
   providers: [PrismaService, ConstructionService, ConstructionProcessor],
-  exports: [ConstructionService],
+  exports: [ConstructionService, ConstructionProcessor],
 })
 export class ConstructionModule {}
