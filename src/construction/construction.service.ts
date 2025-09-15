@@ -29,7 +29,6 @@ export class ConstructionService {
       'finishBuild',
       { villageId, buildingId, type, targetLevel } as FinishBuildPayload,
       { delay: buildTimeMs, attempts: 3, backoff: 1000 });
-    // Fake: sem Redis/Bull, só loga
     this.logger.warn(
       `[queueBuild] Ignorado no Render → ${type} vai para nível ${targetLevel} em ${buildTimeMs}ms`,
     );

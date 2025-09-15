@@ -14,9 +14,16 @@ import { ResourceModule } from './resource/resource.module';
 import { CombatModule } from './combat/combat.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WorldModule } from './world/world.module';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
+  BullModule.forRoot({
+  redis: {
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT),
+  },
+}),
     SocketModule,
     PrismaModule,
     BuildingModule,

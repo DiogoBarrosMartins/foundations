@@ -6,9 +6,12 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 import { CombatController } from './combat.controller';
 import { SocketGateway } from 'src/socket/socket.gateway';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
-  imports: [],
+  imports: [    BullModule.registerQueue({
+      name: 'combat',
+    }),],
   controllers: [CombatController],
   providers: [
     PrismaService,
