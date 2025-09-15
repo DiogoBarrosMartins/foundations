@@ -89,8 +89,7 @@ export class ConstructionProcessor {
 
     return amount > 0 ? { resource, amount } : null;
   }
-}
-/**
+
   @Process('finishBuild')
   async handleFinishBuild(job: Job<FinishBuildPayload>) {
     console.log('🚧 [ConstructionProcessor] Job received:', job.data);
@@ -137,27 +136,6 @@ export class ConstructionProcessor {
       });
     }
   }
-
-  getProductionIncrease(
-    type: BuildingType,
-    level: number,
-  ): { resource: 'food' | 'wood' | 'stone' | 'gold'; amount: number } | null {
-    const resourceMap: Partial<
-      Record<BuildingType, 'food' | 'wood' | 'stone' | 'gold'>
-    > = {
-      [BuildingType.SAWMILL]: 'wood',
-      [BuildingType.CLAY_PIT]: 'stone',
-      [BuildingType.IRON_MINE]: 'stone',
-      [BuildingType.FARM]: 'food',
-    };
-
-    const resource = resourceMap[type];
-    if (!resource) return null;
-
-    const levels = (BUILDING_PRODUCTION_INCREASES as any)[type] ?? [];
-    const amount = levels[level - 1] ?? 0;
-
-    return amount > 0 ? { resource, amount } : null;
-  }
-    */
+ 
+}
 

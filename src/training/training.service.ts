@@ -21,96 +21,66 @@ export class TrainingService {
     private eventEmitter: EventEmitter2,
     private resourceService: ResourceService,
   ) {}
-async startTraining(
-  villageId: string,
-  troopId: string,
-  troopType: string,
-  buildingType: BuildingType,
-  count: number,
-  unitTimeMs: number,
-) {
-  this.logger.log(`[startTraining] village=${villageId} ${troopType} x${count}`);
 
-  const hasInProgress = await this.prisma.trainingTask.findFirst({
-    where: { villageId, buildingType, status: 'in_progress' },
-  });
 
-  const status = hasInProgress ? 'pending' : 'in_progress';
-  const startTime =  new Date() ;
-  const endTime =
-    new Date(Date.now() + unitTimeMs * count)
-      ;
 
-  const task = await this.prisma.trainingTask.create({
-    data: {
-      villageId,
-      troopId,
-      troopType,
-      buildingType,
-      count,
-      remaining: count,
-      status,
-      startTime,
-      endTime,
-    },
-  });
 
-  if (status === 'in_progress') {
-    const job = await this.trainingQueue.queueTraining(task.id, unitTimeMs);
-    await this.prisma.trainingTask.update({
-      where: { id: task.id },
-      data: { queueJobId: job.id?.toString() ?? null },
+
+
+
+
+
+
+  async startTraining(
+    villageId: string,
+    troopId: string,
+    troopType: string,
+    buildingType: BuildingType,
+    count: number,
+    unitTimeMs: number,
+  ) {
+    this.logger.log(`[startTraining] village=${villageId} ${troopType} x${count}`);
+
+    const hasInProgress = await this.prisma.trainingTask.findFirst({
+      where: { villageId, buildingType, status: 'in_progress' },
     });
 
-    this.eventEmitter.emit('troop.training.started', {
-      villageId,
-      troopType,
-      count,
-      taskId: task.id,
+    const status = hasInProgress ? 'pending' : 'in_progress';
+    const startTime = new Date();
+    const endTime = new Date(Date.now() + unitTimeMs * count)
+;
+
+    const task = await this.prisma.trainingTask.create({
+      data: {
+        villageId,
+        troopId,
+        troopType,
+        buildingType,
+        count,
+        remaining: count,
+        status,
+        startTime,
+        endTime,
+      },
     });
+
+    if (status === 'in_progress') {
+      const job = await this.trainingQueue.queueTraining(task.id, unitTimeMs);
+      await this.prisma.trainingTask.update({
+        where: { id: task.id },
+        data: { queueJobId: job.id?.toString() ?? null },
+      });
+
+      this.eventEmitter.emit('troop.training.started', {
+        villageId,
+        troopType,
+        count,
+        taskId: task.id,
+      });
+    }
+
+    return task;
   }
-
-  return task;
-}
-
-async triggerNextTaskIfAvailable(villageId: string) {
-  const hasInProgress = await this.prisma.trainingTask.findFirst({
-    where: { villageId, status: 'in_progress' },
-  });
-  if (hasInProgress) return;
-
-  const next = await this.prisma.trainingTask.findFirst({
-    where: { villageId, status: 'pending' },
-    orderBy: { createdAt: 'asc' },
-  });
-  if (!next) return;
-
-  const def = TROOP_TYPES[next.troopType];
-  const unitTimeMs = def.buildTime * 1000;
-  const endTime = new Date(Date.now() + unitTimeMs * next.count);
-
-  await this.prisma.trainingTask.update({
-    where: { id: next.id },
-    data: {
-      status: 'in_progress',
-      startTime: new Date(),
-      endTime,
-    },
-  });
-
-  const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
-  await this.prisma.trainingTask.update({
-    where: { id: next.id },
-    data: { queueJobId: job.id?.toString() ?? null },
-  });
-
-  this.eventEmitter.emit('troop.training.started', {
-    villageId,
-    troopType: next.troopType,
-    count: next.count,
-    taskId: next.id,
-  });
-}
 
   async forceCompleteTask(taskId: string) {
     this.logger.warn(`[forceCompleteTask] Task ${taskId}`);
@@ -118,10 +88,25 @@ async triggerNextTaskIfAvailable(villageId: string) {
     const task = await this.prisma.trainingTask.findUnique({ where: { id: taskId } });
     if (!task) throw new NotFoundException(`Task ${taskId} not found`);
 
+
+
+
+
     await this.prisma.troop.update({
       where: { id: task.troopId },
       data: { quantity: { increment: task.remaining } },
     });
+
+
+
+
+
+
+
+
+
+
+
 
     await this.prisma.trainingTask.update({
       where: { id: taskId },
@@ -137,6 +122,107 @@ async triggerNextTaskIfAvailable(villageId: string) {
 
     await this.triggerNextTaskIfAvailable(task.villageId);
   }
+
+
+
+
+async triggerNextTaskIfAvailable(villageId: string) {
+  const hasInProgress = await this.prisma.trainingTask.findFirst({
+    where: { villageId, status: 'in_progress' },
+  });
+  if (hasInProgress) return;
+
+  const next = await this.prisma.trainingTask.findFirst({
+    where: { villageId, status: 'pending' },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!next) return;
+
+  if (!next.endTime) {
+    // recalcula endTime agora que vai arrancar
+    const def = TROOP_TYPES[next.troopType];
+    const unitTimeMs = def.buildTime * 1000;
+    const endTime = new Date(Date.now() + unitTimeMs * next.count);
+
+    await this.prisma.trainingTask.update({
+      where: { id: next.id },
+      data: {
+        status: 'in_progress',
+        startTime: new Date(),
+        endTime,
+      },
+    });
+
+    const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
+    await this.prisma.trainingTask.update({
+      where: { id: next.id },
+      data: { queueJobId: job.id?.toString() ?? null },
+    });
+
+    this.eventEmitter.emit('troop.training.started', {
+      villageId,
+      troopType: next.troopType,
+      count: next.count,
+      taskId: next.id,
+    });
+
+    return;
+  }
+
+  // caso já tenha endTime (fallback)
+  const unitTimeMs = Math.floor(
+    (next.endTime.getTime() - Date.now()) / next.count,
+  );
+
+  await this.prisma.trainingTask.update({
+    where: { id: next.id },
+    data: { status: 'in_progress', startTime: new Date() },
+
+
+
+
+  });
+
+  const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
+
+  await this.prisma.trainingTask.update({
+    where: { id: next.id },
+    data: { queueJobId: job.id?.toString() ?? null },
+  });
+
+  this.eventEmitter.emit('troop.training.started', {
+    villageId,
+    troopType: next.troopType,
+    count: next.count,
+    taskId: next.id,
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
