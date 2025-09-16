@@ -200,6 +200,7 @@ model World {
   name      String
   size      Int
   createdAt DateTime @default(now())
+  seed  String? 
 
   tiles     Tile[]   @relation("WorldTiles")
 }

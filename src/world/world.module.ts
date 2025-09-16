@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WorldService } from './world.service';
 import { WorldController } from './world.controller';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaModule } from 'src/prisma/prisma.module';
 
 @Module({
-  imports: [],
+  // If your app already has EventEmitterModule.forRoot() in AppModule, remove it here.
+  imports: [PrismaModule, EventEmitterModule.forRoot()],
+  providers: [WorldService],
   controllers: [WorldController],
-  providers: [WorldService, PrismaService],
   exports: [WorldService],
 })
 export class WorldModule {}
