@@ -61,7 +61,9 @@ private isJsonObject(val: Prisma.JsonValue): val is Prisma.JsonObject {
 private toTileMetadata(
   meta: Prisma.JsonValue | null | undefined
 ): { biome?: string; bonus?: unknown; [k: string]: unknown } | null {
-  if (meta && this.isJsonObject(meta)) return meta as unknown as { biome?: string; bonus?: unknown; [k: string]: unknown };
+  if (meta && this.isJsonObject(meta)) {
+    return meta as unknown as { biome?: string; bonus?: unknown; [k: string]: unknown };
+  }
   return null;
 }
 async getWorldMap() {
@@ -95,7 +97,7 @@ async getWorldMap() {
       name: t.name,
       owner: t.playerName ?? undefined,
       race: t.race ?? undefined,
-      meta,                     // full metadata object (or null)
+      meta,                  // objeto metadata validado (ou null)
       biome: meta?.biome ?? null,
       bonus: meta?.bonus ?? null,
     };
