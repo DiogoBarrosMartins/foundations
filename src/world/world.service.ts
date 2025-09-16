@@ -302,7 +302,7 @@ export class WorldService {
         });
       }
     }
-    await tx.tile.createMany({ data: tiles, skipDuplicates: true });
+    await tx.tile.createMany({ data: tiles, skipDuplicates: dmmfToRuntimeDataModel, batchSize: 1000 });
     this.logger.log(`[WorldService] Created ${tiles.length} base tiles with biomes.`);
   }
 

@@ -4,7 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = "postgresql://hallowed_user:pAE0Kr2uZT7fMbw6Ori5JNGYVqGO0N79@dpg-d33ka7be5dus73eb2tb0-a.frankfurt-postgres.render.com:5432/hallowed?schema=public"
+
 }
 
 model ChatMessage {
