@@ -222,31 +222,33 @@ export class WorldService {
       );
     }
   }
-
-  async generateWorld() {
-    const alreadyExists = await this.prisma.world.findFirst();
-    if (alreadyExists) {
-      this.logger.warn('[WorldService] World already exists. Skipping generation.');
-      return;
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.tile.deleteMany({});
-      this.logger.log('[WorldService] Cleared previous tiles.');
-
-      // Your schema has `seed` optional — persist it for traceability.
-      await tx.world.create({
-        data: { name: 'Genesis', size: WORLD_SIZE, seed: WORLD_SEED },
-      });
-
-      await this.createEmptyTiles(tx);
-
-      const hubLocations = await this.placeFactionStructures(tx);
-      await this.generateNpcVillages(hubLocations, tx);
-    });
-
-    this.logger.log('[WorldService] World generation completed.');
+async generateWorld() {
+  const alreadyExists = await this.prisma.world.findFirst();
+  if (alreadyExists) {
+    this.logger.warn('[WorldService] World already exists. Skipping generation.');
+    return;
   }
+
+  // 1. limpa dados antigos fora de transação longa
+  await this.prisma.tile.deleteMany({});
+  this.logger.log('[WorldService] Cleared previous tiles.');
+
+  // 2. cria registo do mundo
+  await this.prisma.world.create({
+    data: { name: 'Genesis', size: WORLD_SIZE, seed: WORLD_SEED },
+  });
+
+  // 3. cria tiles em batches (sem $transaction gigante)
+  await this.createEmptyTiles(this.prisma);
+
+  // 4. hubs + NPCs podem ir numa transação mais curta
+  await this.prisma.$transaction(async (tx) => {
+    const hubLocations = await this.placeFactionStructures(tx);
+    await this.generateNpcVillages(hubLocations, tx);
+  });
+
+  this.logger.log('[WorldService] World generation completed.');
+}
 
   // ========= Generation helpers =========
 
@@ -279,32 +281,39 @@ export class WorldService {
         return undefined;
     }
   }
+private async createEmptyTiles(tx: Prisma.TransactionClient = this.prisma) {
+  const tiles: Prisma.TileCreateManyInput[] = [];
 
-  private async createEmptyTiles(tx: Prisma.TransactionClient = this.prisma) {
-    const tiles: Prisma.TileCreateManyInput[] = [];
-    for (let x = -HALF_WORLD; x < HALF_WORLD; x++) {
-      for (let y = -HALF_WORLD; y < HALF_WORLD; y++) {
-        const biome = this.assignBiome(x, y);
-        const bonus = this.getBiomeBonus(biome);
+  for (let x = -HALF_WORLD; x < HALF_WORLD; x++) {
+    for (let y = -HALF_WORLD; y < HALF_WORLD; y++) {
+      const biome = this.assignBiome(x, y);
+      const bonus = this.getBiomeBonus(biome);
 
-        tiles.push({
-          x,
-          y,
-          name: `(${x},${y})`,
-          type: DbTileType.EMPTY,
-          race: null,
-          playerId: null,
-          playerName: null,
-          metadata: {
-            biome,
-            ...(bonus ? { bonus } : {}),
-          } as Prisma.InputJsonValue,
-        });
-      }
+      tiles.push({
+        x,
+        y,
+        name: `(${x},${y})`,
+        type: DbTileType.EMPTY,
+        race: null,
+        playerId: null,
+        playerName: null,
+        metadata: { biome, ...(bonus ? { bonus } : {}) } as Prisma.InputJsonValue,
+      });
     }
-    await tx.tile.createMany({ data: tiles, skipDuplicates: dmmfToRuntimeDataModel, batchSize: 1000 });
-    this.logger.log(`[WorldService] Created ${tiles.length} base tiles with biomes.`);
   }
+
+  const BATCH_SIZE = 1000;
+  for (let i = 0; i < tiles.length; i += BATCH_SIZE) {
+    const chunk = tiles.slice(i, i + BATCH_SIZE);
+    await tx.tile.createMany({
+      data: chunk,
+      skipDuplicates: true,
+    });
+  }
+
+  this.logger.log(`[WorldService] Created ${tiles.length} base tiles with biomes.`);
+}
+
 
   private async placeFactionStructures(
     tx: Prisma.TransactionClient = this.prisma,
