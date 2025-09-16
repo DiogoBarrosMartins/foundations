@@ -1,17 +1,17 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { Prisma, RaceName, Tile } from '@prisma/client';
+import { Prisma, RaceName, Tile, TileType as DbTileType } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getStaticRaces } from 'src/game/constants/race.constants';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
-// --- Config (kept simple) ---
-const WORLD_SIZE = 100;
+// --- Config (env-friendly defaults) ---
+const WORLD_SIZE = Number(process.env.WORLD_SIZE ?? 100);
 const HALF_WORLD = Math.floor(WORLD_SIZE / 2);
-const NPC_VILLAGE_COUNT = 20;
-const WORLD_SEED = 'babel-genesis';
+const NPC_VILLAGE_COUNT = Number(process.env.NPC_VILLAGE_COUNT ?? 20);
+const WORLD_SEED = process.env.WORLD_SEED ?? 'babel-genesis';
 
-// --- Deterministic RNG utilities ---
+// --- Deterministic RNG (mulberry32) ---
 function mulberry32(seed: number) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -30,16 +30,19 @@ function hashStringToInt(s: string): number {
 }
 const RNG = mulberry32(hashStringToInt(WORLD_SEED));
 
-// --- Local enums matching DB string values ---
-enum TileType {
-  EMPTY = 'EMPTY',
-  VILLAGE = 'VILLAGE',
-  OUTPOST = 'OUTPOST',
-}
+// --- Domain enums (local only) ---
 enum Zone {
   CORE = 'CORE',
   MID = 'MID',
   OUTER = 'OUTER',
+}
+enum Biome {
+  PLAINS = 'PLAINS',
+  FOREST = 'FOREST',
+  MOUNTAIN = 'MOUNTAIN',
+  HILLS = 'HILLS',
+  SWAMP = 'SWAMP',
+  DESERT = 'DESERT',
 }
 
 @Injectable()
@@ -52,65 +55,73 @@ export class WorldService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  // ========= Public API =========
-// --- JSON helpers (Prisma JsonValue guards) ---
-// --- JSON helpers (guards para Prisma JsonValue) ---
-private isJsonObject(val: Prisma.JsonValue): val is Prisma.JsonObject {
-  return typeof val === 'object' && val !== null && !Array.isArray(val);
-}
-
-private toTileMetadata(
-  meta: Prisma.JsonValue | null | undefined
-): { biome?: string; bonus?: unknown; [k: string]: unknown } | null {
-  if (meta && this.isJsonObject(meta)) {
-    return meta as unknown as { biome?: string; bonus?: unknown; [k: string]: unknown };
+  // ========= JSON helpers (type-safe access to Prisma.JsonValue) =========
+  private isJsonObject(val: Prisma.JsonValue): val is Prisma.JsonObject {
+    return typeof val === 'object' && val !== null && !Array.isArray(val);
   }
-  return null;
-}
-async getWorldMap() {
-  this.logger.log('[WorldService] getWorldMap called');
+  private toTileMetadata(
+    meta: Prisma.JsonValue | null | undefined,
+  ): { biome?: string; bonus?: unknown; [k: string]: unknown } | null {
+    if (meta && this.isJsonObject(meta)) {
+      return meta as unknown as { biome?: string; bonus?: unknown; [k: string]: unknown };
+    }
+    return null;
+  }
 
-  const tiles = await this.prisma.tile.findMany({
-    select: {
-      x: true,
-      y: true,
-      type: true,
-      name: true,
-      race: true,
-      playerName: true,
-      metadata: true,
-    },
-  });
+  // ========= Public API =========
 
-  return tiles.map((t) => {
-    let mappedType: 'village' | 'outpost' | 'empty' | 'npc' = 'empty';
-    if (t.type === (TileType.VILLAGE as any)) mappedType = 'village';
-    else if (t.type === (TileType.OUTPOST as any)) mappedType = 'outpost';
-    else if (t.type === (TileType.EMPTY as any)) mappedType = 'empty';
-    else mappedType = 'npc';
+  // Ready-to-render map payload with biome/bonus surfaced
+  async getWorldMap() {
+    this.logger.log('[WorldService] getWorldMap called');
 
-    // SAFE: valida se metadata é JsonObject antes de ler chaves
-    const meta = this.toTileMetadata(t.metadata);
+    const tiles = await this.prisma.tile.findMany({
+      select: {
+        x: true,
+        y: true,
+        type: true,
+        name: true,
+        race: true,
+        playerName: true,
+        metadata: true,
+      },
+    });
 
-    return {
-      x: t.x,
-      y: t.y,
-      type: mappedType,
-      name: t.name,
-      owner: t.playerName ?? undefined,
-      race: t.race ?? undefined,
-      meta,                 // devolve o objeto metadata (ou null)
-      biome: meta?.biome ?? null,
-      bonus: meta?.bonus ?? null,
-    };
-  });
-}
+    return tiles.map((t) => {
+      let mappedType: 'village' | 'outpost' | 'resource' | 'npc' = 'resource';
+      switch (t.type) {
+        case DbTileType.VILLAGE:
+          mappedType = 'village';
+          break;
+        case DbTileType.OUTPOST:
+          mappedType = 'outpost';
+          break;
+        case DbTileType.EMPTY:
+        case DbTileType.SHRINE:
+          mappedType = 'resource';
+          break;
+        default:
+          mappedType = 'npc';
+      }
 
+      const meta = this.toTileMetadata(t.metadata);
 
+      return {
+        x: t.x,
+        y: t.y,
+        type: mappedType,
+        name: t.name,
+        owner: t.playerName ?? undefined,
+        race: t.race ?? undefined,
+        meta,                      // full metadata object (or null)
+        biome: meta?.biome ?? null,
+        bonus: meta?.bonus ?? null,
+      };
+    });
+  }
 
   async getAllTiles() {
     return this.prisma.tile.findMany({
-      select: { x: true, y: true, type: true, race: true, name: true },
+      select: { x: true, y: true, type: true, race: true, name: true, metadata: true },
     });
   }
 
@@ -118,7 +129,8 @@ async getWorldMap() {
     if (Math.abs(x) > HALF_WORLD || Math.abs(y) > HALF_WORLD) {
       throw new BadRequestException('Invalid coordinates');
     }
-    const tiles = await this.prisma.tile.findMany({
+
+    return this.prisma.tile.findMany({
       where: {
         x: { gte: x - radius, lte: x + radius },
         y: { gte: y - radius, lte: y + radius },
@@ -130,9 +142,9 @@ async getWorldMap() {
         type: true,
         race: true,
         playerName: true,
+        metadata: true,
       },
     });
-    return tiles;
   }
 
   // Player spawn hook
@@ -147,7 +159,7 @@ async getWorldMap() {
     await this.addVillageToTile(payload);
   }
 
-  // Create a player village near race outposts, atomically
+  // Create a player village near race outposts, atomically (safe under concurrency)
   async addVillageToTile(data: {
     race: string;
     playerId: string;
@@ -157,9 +169,8 @@ async getWorldMap() {
     const { race, playerId, playerName, name } = data;
 
     const outposts = await this.prisma.tile.findMany({
-      where: { type: TileType.OUTPOST as any, race: race as RaceName },
+      where: { type: DbTileType.OUTPOST, race: race as RaceName },
     });
-
     if (outposts.length === 0) {
       throw new Error(`[WorldService] No outposts found for race "${race}"`);
     }
@@ -168,14 +179,14 @@ async getWorldMap() {
     const spot = await this.findEmptyTileNear(origin.x, origin.y);
 
     const updated = await this.prisma.tile.updateMany({
-      where: { x: spot.x, y: spot.y, type: TileType.EMPTY as any },
+      where: { x: spot.x, y: spot.y, type: DbTileType.EMPTY },
       data: {
         name,
-        type: TileType.VILLAGE as any,
+        type: DbTileType.VILLAGE,
         race: race as RaceName,
         playerId,
         playerName,
-        // JSON field fix: use DbNull (SQL NULL) instead of `null`
+        // JSON field: use DbNull to clear (SQL NULL). Use JsonNull if you prefer JSON null.
         metadata: Prisma.DbNull,
       },
     });
@@ -223,9 +234,9 @@ async getWorldMap() {
       await tx.tile.deleteMany({});
       this.logger.log('[WorldService] Cleared previous tiles.');
 
-      // Remove "seed" here unless your World model has that column
+      // Your schema has `seed` optional — persist it for traceability.
       await tx.world.create({
-        data: { name: 'Genesis', size: WORLD_SIZE },
+        data: { name: 'Genesis', size: WORLD_SIZE, seed: WORLD_SEED },
       });
 
       await this.createEmptyTiles(tx);
@@ -237,27 +248,62 @@ async getWorldMap() {
     this.logger.log('[WorldService] World generation completed.');
   }
 
-  // ========= Internal: generation helpers =========
+  // ========= Generation helpers =========
+
+  private assignBiome(x: number, y: number): Biome {
+    // Fast hash-based pseudo-noise (deterministic)
+    const noise =
+      Math.abs(Math.sin(x * 12.9898 + y * 78.233 + 1337.42)) % 1;
+
+    if (noise < 0.2) return Biome.FOREST;
+    if (noise < 0.35) return Biome.MOUNTAIN;
+    if (noise < 0.5) return Biome.HILLS;
+    if (noise < 0.65) return Biome.SWAMP;
+    if (noise < 0.8) return Biome.DESERT;
+    return Biome.PLAINS;
+  }
+
+  private getBiomeBonus(biome: Biome): Prisma.InputJsonValue | undefined {
+    switch (biome) {
+      case Biome.FOREST:
+        return { resource: 'wood', modifier: 0.2 };
+      case Biome.MOUNTAIN:
+        return { resource: 'stone', modifier: 0.2 };
+      case Biome.HILLS:
+        return { resource: 'gold', modifier: 0.15 };
+      case Biome.SWAMP:
+        return { resource: 'food', modifier: -0.1 };
+      case Biome.DESERT:
+        return { resource: 'food', modifier: -0.2 };
+      default:
+        return undefined;
+    }
+  }
 
   private async createEmptyTiles(tx: Prisma.TransactionClient = this.prisma) {
     const tiles: Prisma.TileCreateManyInput[] = [];
     for (let x = -HALF_WORLD; x < HALF_WORLD; x++) {
       for (let y = -HALF_WORLD; y < HALF_WORLD; y++) {
+        const biome = this.assignBiome(x, y);
+        const bonus = this.getBiomeBonus(biome);
+
         tiles.push({
           x,
           y,
           name: `(${x},${y})`,
-          type: TileType.EMPTY as any,
+          type: DbTileType.EMPTY,
           race: null,
           playerId: null,
           playerName: null,
-          // JSON field fix: use DbNull (SQL NULL) instead of `null`
-          metadata: Prisma.DbNull as unknown as Prisma.InputJsonValue,
+          metadata: {
+            biome,
+            ...(bonus ? { bonus } : {}),
+          } as Prisma.InputJsonValue,
         });
       }
     }
     await tx.tile.createMany({ data: tiles, skipDuplicates: true });
-    this.logger.log(`[WorldService] Created ${tiles.length} base tiles.`);
+    this.logger.log(`[WorldService] Created ${tiles.length} base tiles with biomes.`);
   }
 
   private async placeFactionStructures(
@@ -273,7 +319,7 @@ async getWorldMap() {
         where: { x_y: { x: race.hubX, y: race.hubY } },
         data: {
           name: race.hubName,
-          type: TileType.OUTPOST as any,
+          type: DbTileType.OUTPOST,
           race: race.name as RaceName,
           playerId: 'SYSTEM',
           playerName: 'SYSTEM',
@@ -281,7 +327,7 @@ async getWorldMap() {
             outpostType: 'HUB',
             description: race.description,
             traits: race.traits,
-          } as any,
+          } as Prisma.InputJsonValue,
         },
       });
 
@@ -290,11 +336,11 @@ async getWorldMap() {
           where: { x_y: { x: outpost.x, y: outpost.y } },
           data: {
             name: outpost.name,
-            type: TileType.OUTPOST as any,
+            type: DbTileType.OUTPOST,
             race: race.name as RaceName,
             playerId: 'SYSTEM',
             playerName: 'SYSTEM',
-            metadata: { outpostType: outpost.type } as any,
+            metadata: { outpostType: outpost.type } as Prisma.InputJsonValue,
           },
         });
       }
@@ -320,15 +366,13 @@ async getWorldMap() {
       const metadata: Prisma.JsonObject = this.getNpcMetadata(zone);
 
       const ok = await this.claimEmptyTile(x, y, {
-        type: TileType.VILLAGE as any,
+        type: DbTileType.VILLAGE,
         name: `Bandit Camp ${created + 1}`,
         race: null,
         metadata,
       });
 
-      if (ok) {
-        created++;
-      }
+      if (ok) created++;
     }
 
     this.logger.log(
@@ -336,19 +380,16 @@ async getWorldMap() {
     );
   }
 
-  // ========= Internal: allocation & validation =========
+  // ========= Allocation & validation =========
 
-  /**
-   * Atomically claim an EMPTY tile at (x,y) by changing its type and optional fields.
-   * Returns true if exactly one row was updated, false otherwise.
-   */
+  /** Atomically claim an EMPTY tile at (x,y); returns true if exactly one row updated. */
   private async claimEmptyTile(
     x: number,
     y: number,
     data: Prisma.TileUpdateManyMutationInput,
   ): Promise<boolean> {
     const res = await this.prisma.tile.updateMany({
-      where: { x, y, type: TileType.EMPTY as any },
+      where: { x, y, type: DbTileType.EMPTY },
       data,
     });
     return res.count === 1;
@@ -370,11 +411,11 @@ async getWorldMap() {
 
           const tile = await this.prisma.tile.findUnique({
             where: { x_y: { x, y } },
+            select: { type: true },
           });
 
-          if (tile && tile.type === (TileType.EMPTY as any)) {
-            // Mark as reserved in-memory; final atomic update is performed by caller
-            this.reservedTiles.add(key);
+          if (tile && tile.type === DbTileType.EMPTY) {
+            this.reservedTiles.add(key); // soft reservation (in-memory)
             return { x, y };
           }
         }
@@ -392,9 +433,11 @@ async getWorldMap() {
       if (Math.abs(x) > HALF_WORLD || Math.abs(y) > HALF_WORLD) continue;
       const key = `${x},${y}`;
       if (this.reservedTiles.has(key)) continue;
+
       const tile = await this.prisma.tile.findUnique({
         where: { x_y: { x, y } },
       });
+
       if (isValid(tile, x, y)) {
         this.reservedTiles.add(key);
         return { x, y };
@@ -407,7 +450,7 @@ async getWorldMap() {
     hubs: { x: number; y: number }[] = [],
   ): Promise<{ x: number; y: number }> {
     return this.findValidTile((tile, x, y) => {
-      return tile?.type === (TileType.EMPTY as any) && !this.isNearStructure(x, y, hubs);
+      return tile?.type === DbTileType.EMPTY && !this.isNearStructure(x, y, hubs);
     });
   }
 
