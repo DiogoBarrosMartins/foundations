@@ -54,6 +54,7 @@ export class WorldService {
 
   // ========= Public API =========
 // --- JSON helpers (Prisma JsonValue guards) ---
+// --- JSON helpers (guards para Prisma JsonValue) ---
 private isJsonObject(val: Prisma.JsonValue): val is Prisma.JsonObject {
   return typeof val === 'object' && val !== null && !Array.isArray(val);
 }
@@ -88,6 +89,7 @@ async getWorldMap() {
     else if (t.type === (TileType.EMPTY as any)) mappedType = 'empty';
     else mappedType = 'npc';
 
+    // SAFE: valida se metadata é JsonObject antes de ler chaves
     const meta = this.toTileMetadata(t.metadata);
 
     return {
@@ -97,12 +99,13 @@ async getWorldMap() {
       name: t.name,
       owner: t.playerName ?? undefined,
       race: t.race ?? undefined,
-      meta,                  // objeto metadata validado (ou null)
+      meta,                 // devolve o objeto metadata (ou null)
       biome: meta?.biome ?? null,
       bonus: meta?.bonus ?? null,
     };
   });
 }
+
 
 
   async getAllTiles() {
