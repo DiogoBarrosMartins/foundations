@@ -53,41 +53,55 @@ export class WorldService {
   ) {}
 
   // ========= Public API =========
+// --- JSON helpers (Prisma JsonValue guards) ---
+private isJsonObject(val: Prisma.JsonValue): val is Prisma.JsonObject {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
 
-  // Simple map endpoint: normalized payload for frontend
-  async getWorldMap() {
-    this.logger.log('[WorldService] getWorldMap called');
+private toTileMetadata(
+  meta: Prisma.JsonValue | null | undefined
+): { biome?: string; bonus?: unknown; [k: string]: unknown } | null {
+  if (meta && this.isJsonObject(meta)) return meta as unknown as { biome?: string; bonus?: unknown; [k: string]: unknown };
+  return null;
+}
+async getWorldMap() {
+  this.logger.log('[WorldService] getWorldMap called');
 
-    const tiles = await this.prisma.tile.findMany({
-      select: {
-        x: true,
-        y: true,
-        type: true,
-        name: true,
-        race: true,
-        playerName: true,
-        metadata: true,
-      },
-    });
+  const tiles = await this.prisma.tile.findMany({
+    select: {
+      x: true,
+      y: true,
+      type: true,
+      name: true,
+      race: true,
+      playerName: true,
+      metadata: true,
+    },
+  });
 
-    return tiles.map((t) => {
-      let mappedType: 'village' | 'outpost' | 'empty' | 'npc' = 'empty';
-      if (t.type === (TileType.VILLAGE as any)) mappedType = 'village';
-      else if (t.type === (TileType.OUTPOST as any)) mappedType = 'outpost';
-      else if (t.type === (TileType.EMPTY as any)) mappedType = 'empty';
-      else mappedType = 'npc';
+  return tiles.map((t) => {
+    let mappedType: 'village' | 'outpost' | 'empty' | 'npc' = 'empty';
+    if (t.type === (TileType.VILLAGE as any)) mappedType = 'village';
+    else if (t.type === (TileType.OUTPOST as any)) mappedType = 'outpost';
+    else if (t.type === (TileType.EMPTY as any)) mappedType = 'empty';
+    else mappedType = 'npc';
 
-      return {
-        x: t.x,
-        y: t.y,
-        type: mappedType,
-        name: t.name,
-        owner: t.playerName ?? undefined,
-        race: t.race ?? undefined,
-        meta: t.metadata ?? undefined,
-      };
-    });
-  }
+    const meta = this.toTileMetadata(t.metadata);
+
+    return {
+      x: t.x,
+      y: t.y,
+      type: mappedType,
+      name: t.name,
+      owner: t.playerName ?? undefined,
+      race: t.race ?? undefined,
+      meta,                     // full metadata object (or null)
+      biome: meta?.biome ?? null,
+      bonus: meta?.bonus ?? null,
+    };
+  });
+}
+
 
   async getAllTiles() {
     return this.prisma.tile.findMany({
