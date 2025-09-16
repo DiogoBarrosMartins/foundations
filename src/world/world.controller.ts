@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { WorldService } from './world.service';
 
 @Controller('world')
@@ -24,5 +24,12 @@ export class WorldController {
   ) {
     const parsedRadius = Math.max(1, Math.min(10, parseInt(radius, 10) || 5));
     return this.worldService.getTilesAround(x, y, parsedRadius);
+  }
+
+  @Post('reset')
+  // @UseGuards(AuthGuard)  // 👈 descomenta se quiseres proteger
+  async resetWorld() {
+    await this.worldService.generateWorld();
+    return { message: '🌍 World reset complete' };
   }
 }
