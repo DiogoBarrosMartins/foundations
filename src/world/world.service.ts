@@ -222,33 +222,35 @@ export class WorldService {
       );
     }
   }
+// generateWorld.ts
 async generateWorld() {
-  const alreadyExists = await this.prisma.world.findFirst();
-  if (alreadyExists) {
-    this.logger.warn('[WorldService] World already exists. Skipping generation.');
-    return;
-  }
+  this.logger.warn("[WorldService] No world found. Generating...");
 
-  // 1. limpa dados antigos fora de transação longa
-  await this.prisma.tile.deleteMany({});
-  this.logger.log('[WorldService] Cleared previous tiles.');
+  const WORLD_SIZE = 100;
+  const seed = Date.now();
 
-  // 2. cria registo do mundo
-  await this.prisma.world.create({
-    data: { name: 'Genesis', size: WORLD_SIZE, seed: WORLD_SEED },
+  // 1. limpar mundo antigo
+  this.logger.log("[WorldService] Cleared previous tiles.");
+  await this.prisma.tile.deleteMany();
+  await this.prisma.world.deleteMany();
+
+  // 2. criar novo world
+  const world = await this.prisma.world.create({
+    data: { name: "Babel World",size: WORLD_SIZE, seed: seed.toString() },
   });
 
-  // 3. cria tiles em batches (sem $transaction gigante)
-  await this.createEmptyTiles(this.prisma);
+  // 3. criar tiles vazios em batches
+  await this.createEmptyTiles(world.id, WORLD_SIZE);
 
-  // 4. hubs + NPCs podem ir numa transação mais curta
-  await this.prisma.$transaction(async (tx) => {
-    const hubLocations = await this.placeFactionStructures(tx);
-    await this.generateNpcVillages(hubLocations, tx);
-  });
+  // 4. hubs e outposts de raças
+  await this.placeRaceStructures(world.id);
 
-  this.logger.log('[WorldService] World generation completed.');
+  // 5. aldeias NPC
+  await this.spawnNpcVillages(world.id);
+
+  this.logger.log("[WorldService] 🌍 World generation complete.");
 }
+
 
   // ========= Generation helpers =========
 
@@ -281,38 +283,35 @@ async generateWorld() {
         return undefined;
     }
   }
-private async createEmptyTiles(tx: Prisma.TransactionClient = this.prisma) {
-  const tiles: Prisma.TileCreateManyInput[] = [];
+private async createEmptyTiles(worldId: string, size: number) {
+  const batchSize = 1000;
+  const tiles: any[] = [];
 
-  for (let x = -HALF_WORLD; x < HALF_WORLD; x++) {
-    for (let y = -HALF_WORLD; y < HALF_WORLD; y++) {
-      const biome = this.assignBiome(x, y);
-      const bonus = this.getBiomeBonus(biome);
-
+  for (let x = -size / 2; x < size / 2; x++) {
+    for (let y = -size / 2; y < size / 2; y++) {
       tiles.push({
+        worldId,
         x,
         y,
-        name: `(${x},${y})`,
-        type: DbTileType.EMPTY,
-        race: null,
-        playerId: null,
-        playerName: null,
-        metadata: { biome, ...(bonus ? { bonus } : {}) } as Prisma.InputJsonValue,
+        type: DbTileType.EMPTY,  // 👈 não "empty"
+  metadata: {
+    biome: this.assignBiome(x, y),
+    bonus: this.getBiomeBonus(this.assignBiome(x, y)),
+  },
       });
     }
   }
 
-  const BATCH_SIZE = 1000;
-  for (let i = 0; i < tiles.length; i += BATCH_SIZE) {
-    const chunk = tiles.slice(i, i + BATCH_SIZE);
-    await tx.tile.createMany({
-      data: chunk,
-      skipDuplicates: true,
-    });
+  // inserir em batches para não rebentar
+  for (let i = 0; i < tiles.length; i += batchSize) {
+    const chunk = tiles.slice(i, i + batchSize);
+    await this.prisma.tile.createMany({ data: chunk });
+    this.logger.log(
+      `[WorldService] Created ${i + chunk.length}/${tiles.length} base tiles`
+    );
   }
-
-  this.logger.log(`[WorldService] Created ${tiles.length} base tiles with biomes.`);
 }
+
 
 
   private async placeFactionStructures(
@@ -357,6 +356,72 @@ private async createEmptyTiles(tx: Prisma.TransactionClient = this.prisma) {
 
     return hubs;
   }
+  private rand(min: number, max: number) {
+  return Math.floor(RNG() * (max - min + 1)) + min;
+}
+private async placeRaceStructures(worldId: string) {
+  const races = getStaticRaces(WORLD_SIZE); // 👈 substitui this.races
+  for (const race of races) {
+    const hub = await this.prisma.tile.create({
+      data: {
+        worldId,
+        x: race.hubX,
+        y: race.hubY,
+        type: DbTileType.VILLAGE, // 👈 enum do Prisma
+        name: race.hubName,
+        metadata: { race: race.name, hub: true },
+      },
+    });
+
+    this.logger.log(`🏰 ${race.name} hub '${race.hubName}' placed at (${hub.x}, ${hub.y})`);
+
+    for (const outpost of race.outposts) {
+      const op = await this.prisma.tile.create({
+        data: {
+          worldId,
+          x: outpost.x,
+          y: outpost.y,
+          type: DbTileType.OUTPOST, // 👈 enum do Prisma
+          name: outpost.name,
+          metadata: { race: race.name },
+        },
+      });
+      this.logger.log(`🏕️ ${race.name} outpost '${op.name}' placed at (${op.x}, ${op.y})`);
+    }
+  }
+}
+private async spawnNpcVillages(worldId: string) {
+  let placed = 0;
+  let attempts = 0;
+  const target = 20;
+
+  while (placed < target && attempts < target * 5) {
+    attempts++;
+    const x = this.rand(-50, 50);
+    const y = this.rand(-50, 50);
+
+    const exists = await this.prisma.tile.findUnique({
+      where: { x_y: { x, y } }, // 👈 índice correto
+    });
+
+    if (!exists) {
+      await this.prisma.tile.create({
+        data: {
+          worldId,
+          x,
+          y,
+          type: DbTileType.VILLAGE, // 👈 enum válido (NPCs tratados como aldeias especiais)
+          name: `NPC Village ${placed + 1}`,
+          metadata: { npc: true }, // 👈 marca no metadata que é NPC
+        },
+      });
+      placed++;
+    }
+  }
+
+  this.logger.log(`[WorldService] Created ${placed}/${target} NPC villages (attempts=${attempts}).`);
+}
+
 
   private async generateNpcVillages(
     hubLocations: { x: number; y: number }[],
