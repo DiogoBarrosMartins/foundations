@@ -360,36 +360,51 @@ private async createEmptyTiles(worldId: string, size: number) {
   return Math.floor(RNG() * (max - min + 1)) + min;
 }
 private async placeRaceStructures(worldId: string) {
-  const races = getStaticRaces(WORLD_SIZE); // 👈 substitui this.races
+  const races = getStaticRaces(WORLD_SIZE);
+
   for (const race of races) {
+    // Hub principal (tipo = OUTPOST, marcado como hub no metadata)
     const hub = await this.prisma.tile.create({
       data: {
         worldId,
         x: race.hubX,
         y: race.hubY,
-        type: DbTileType.VILLAGE, // 👈 enum do Prisma
+        type: DbTileType.OUTPOST, // 👈 corrigido (era VILLAGE)
+        race: race.name as RaceName, // 👈 garantir que fica associado à raça
         name: race.hubName,
-        metadata: { race: race.name, hub: true },
+        playerId: "SYSTEM",
+        playerName: "SYSTEM",
+        metadata: {
+          race: race.name,
+          hub: true,
+          description: race.description,
+          traits: race.traits,
+        },
       },
     });
 
     this.logger.log(`🏰 ${race.name} hub '${race.hubName}' placed at (${hub.x}, ${hub.y})`);
 
+    // Outposts secundários
     for (const outpost of race.outposts) {
       const op = await this.prisma.tile.create({
         data: {
           worldId,
           x: outpost.x,
           y: outpost.y,
-          type: DbTileType.OUTPOST, // 👈 enum do Prisma
+          type: DbTileType.OUTPOST,
+          race: race.name as RaceName, // 👈 associar também à raça
           name: outpost.name,
-          metadata: { race: race.name },
+          playerId: "SYSTEM",
+          playerName: "SYSTEM",
+          metadata: { outpostType: outpost.type },
         },
       });
       this.logger.log(`🏕️ ${race.name} outpost '${op.name}' placed at (${op.x}, ${op.y})`);
     }
   }
 }
+
 private async spawnNpcVillages(worldId: string) {
   let placed = 0;
   let attempts = 0;
