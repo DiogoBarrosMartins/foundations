@@ -14,15 +14,31 @@ export class ResourceService {
     const village = await this.prisma.village.findUniqueOrThrow({
       where: { id: villageId },
       select: {
-        resourceAmounts: true,
-        resourceProductionRates: true,
+        foodAmount: true,
+        woodAmount: true,
+        stoneAmount: true,
+        goldAmount: true,
+        foodProductionRate: true,
+        woodProductionRate: true,
+        stoneProductionRate: true,
+        goldProductionRate: true,
         lastCollectedAt: true,
         createdAt: true,
       },
     });
 
-    const amounts = village.resourceAmounts as Resources;
-    const rates = village.resourceProductionRates as Resources;
+    const amounts: Resources = {
+      food: village.foodAmount,
+      wood: village.woodAmount,
+      stone: village.stoneAmount,
+      gold: village.goldAmount,
+    };
+    const rates: Resources = {
+      food: village.foodProductionRate,
+      wood: village.woodProductionRate,
+      stone: village.stoneProductionRate,
+      gold: village.goldProductionRate,
+    };
 
     const now = new Date();
     const last = village.lastCollectedAt;
@@ -38,7 +54,10 @@ export class ResourceService {
     await this.prisma.village.update({
       where: { id: villageId },
       data: {
-        resourceAmounts: newResources,
+        foodAmount: newResources.food,
+        woodAmount: newResources.wood,
+        stoneAmount: newResources.stone,
+        goldAmount: newResources.gold,
         lastCollectedAt: now,
       },
     });
@@ -68,7 +87,12 @@ export class ResourceService {
 
     await this.prisma.village.update({
       where: { id: villageId },
-      data: { resourceAmounts: updated },
+      data: {
+        foodAmount: updated.food,
+        woodAmount: updated.wood,
+        stoneAmount: updated.stone,
+        goldAmount: updated.gold,
+      },
     });
 
     this.socket.sendResourcesUpdate(villageId, updated);
@@ -89,7 +113,12 @@ export class ResourceService {
 
     await this.prisma.village.update({
       where: { id: villageId },
-      data: { resourceAmounts: updated },
+      data: {
+        foodAmount: updated.food,
+        woodAmount: updated.wood,
+        stoneAmount: updated.stone,
+        goldAmount: updated.gold,
+      },
     });
 
     this.socket.sendResourcesUpdate(villageId, updated);

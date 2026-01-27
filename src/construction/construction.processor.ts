@@ -44,22 +44,21 @@ export class ConstructionProcessor {
     if (increment) {
       const village = await this.prisma.village.findUnique({
         where: { id: villageId },
+        select: {
+          foodProductionRate: true,
+          woodProductionRate: true,
+          stoneProductionRate: true,
+          goldProductionRate: true,
+        },
       });
       if (!village) return;
 
-      const currentRates = village.resourceProductionRates as Record<
-        string,
-        number
-      >;
-      const updatedRates = {
-        ...currentRates,
-        [increment.resource]:
-          (currentRates[increment.resource] || 0) + increment.amount,
-      };
+      const updateData: any = {};
+      updateData[`${increment.resource}ProductionRate`] = village[`${increment.resource}ProductionRate`] + increment.amount;
 
       await this.prisma.village.update({
         where: { id: villageId },
-        data: { resourceProductionRates: updatedRates },
+        data: updateData,
       });
 
       console.log(
@@ -117,22 +116,21 @@ export class ConstructionProcessor {
     if (increment) {
       const village = await this.prisma.village.findUnique({
         where: { id: villageId },
+        select: {
+          foodProductionRate: true,
+          woodProductionRate: true,
+          stoneProductionRate: true,
+          goldProductionRate: true,
+        },
       });
       if (!village) return;
 
-      const currentRates = village.resourceProductionRates as Record<
-        string,
-        number
-      >;
-      const updatedRates = {
-        ...currentRates,
-        [increment.resource]:
-          (currentRates[increment.resource] || 0) + increment.amount,
-      };
+      const updateData: any = {};
+      updateData[`${increment.resource}ProductionRate`] = village[`${increment.resource}ProductionRate`] + increment.amount;
 
       await this.prisma.village.update({
         where: { id: villageId },
-        data: { resourceProductionRates: updatedRates },
+        data: updateData,
       });
     }
   }

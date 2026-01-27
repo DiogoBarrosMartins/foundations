@@ -72,8 +72,19 @@ model Village {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
   resolvedAt      DateTime? 
-  resourceAmounts         Json     @default("{\"food\":500,\"wood\":500,\"stone\":500,\"gold\":500}")
-  resourceProductionRates Json     @default("{\"food\":10,\"wood\":10,\"stone\":10,\"gold\":8}")
+
+  // Resource amounts as separate columns
+  foodAmount    Int @default(500)
+  woodAmount    Int @default(500)
+  stoneAmount   Int @default(500)
+  goldAmount    Int @default(500)
+
+  // Resource production rates as separate columns
+  foodProductionRate  Int @default(10)
+  woodProductionRate  Int @default(10)
+  stoneProductionRate Int @default(10)
+  goldProductionRate  Int @default(8)
+
   lastCollectedAt         DateTime @default(now())
 
 race RaceName @default(HUMAN)

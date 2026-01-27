@@ -25,6 +25,64 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Foundations Game Server
+
+This is the backend server for the Foundations game, a strategy game similar to Travian.
+
+### Quick Start with Docker
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd foundations/server
+   ```
+
+2. **Start all services**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Run database migrations**
+   ```bash
+   docker-compose exec app npx prisma migrate deploy
+   ```
+
+4. **Generate Prisma client**
+   ```bash
+   docker-compose exec app npx prisma generate
+   ```
+
+5. **Access the API**
+   - API: http://localhost:3000
+   - Swagger Docs: http://localhost:3000/docs
+
+### Manual Setup (without Docker)
+
+```bash
+# Install dependencies
+npm install
+
+# Start PostgreSQL and Redis locally
+# Then update .env with your local database URLs
+
+# Run migrations
+npx prisma migrate dev
+
+# Generate Prisma client
+npx prisma generate
+
+# Start development server
+npm run start:dev
+```
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+- `DATABASE_URL`: PostgreSQL connection string
+- `REDIS_HOST` & `REDIS_PORT`: Redis configuration
+- `JWT_SECRET`: Secret for JWT tokens
+
 ## Project setup
 
 ```bash
