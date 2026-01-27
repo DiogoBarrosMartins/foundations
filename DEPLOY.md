@@ -1,42 +1,94 @@
 # Foundations Game - Deployment Guide
 
-## 🚀 Opções de Deploy
+## 🚀 Deploy no Render (GRÁTIS - Hoje!)
 
-### 1. **Railway** (Recomendado - Fácil)
+### Passo 1: Conectar GitHub
+1. Acesse [render.com](https://render.com)
+2. Faça login com GitHub
+3. Clique "New" → "Blueprint"
+4. Conecte seu repositório: `DiogoBarrosMartins/foundations`
+
+### Passo 2: Configurar Serviços
+O `render.yaml` criará automaticamente:
+- ✅ **Web Service** (API NestJS)
+- ✅ **PostgreSQL** (banco de dados)
+- ✅ **Redis** (filas Bull)
+
+### Passo 3: Deploy
+1. Clique "Apply"
+2. Aguarde ~10-15 minutos
+3. Acesse a URL gerada
+
+### Passo 4: Configurar Banco
+Após deploy, execute no terminal do Render:
 ```bash
-# 1. Instalar Railway CLI
-npm install -g @railway/cli
-
-# 2. Login
-railway login
-
-# 3. Conectar ao projeto
-railway link
-
-# 4. Deploy
-railway up
-
-# 5. Configurar variáveis de ambiente no dashboard
-# DATABASE_URL, REDIS_URL, JWT_SECRET
+npx prisma migrate deploy
+npx prisma generate
 ```
 
-### 2. **Render** (Gratuito limitado)
+---
+
+## 🔧 Configuração Manual (se Blueprint falhar)
+
+### Criar PostgreSQL
+1. "New" → "PostgreSQL"
+2. Nome: `foundations-db`
+3. Copie a `DATABASE_URL`
+
+### Criar Redis
+1. "New" → "Redis"
+2. Nome: `foundations-redis`
+3. Copie a `REDIS_URL`
+
+### Criar Web Service
+1. "New" → "Web Service"
+2. Conectar GitHub repo
+3. Configurar:
+   - **Build Command**: `npm run deploy:prepare`
+   - **Start Command**: `npm run start:prod`
+4. Adicionar Environment Variables:
+   ```
+   NODE_ENV=production
+   DATABASE_URL=postgresql://...
+   REDIS_URL=redis://...
+   JWT_SECRET=your-secret-here
+   ```
+
+---
+
+## 📊 Status do Deploy
+
+- **Tier Gratuito**: 750h/mês (~30 dias)
+- **Banco**: 256MB PostgreSQL grátis
+- **Redis**: 30MB grátis
+- **Auto-scaling**: Não (gratuito)
+
+---
+
+## 🧪 Testar Deploy
+
 ```bash
-# 1. Conectar GitHub ao Render
-# 2. Criar Web Service
-# 3. Configurar build & start commands
-# 4. Adicionar PostgreSQL e Redis add-ons
+# Health check
+curl https://your-app.render.com/health
+
+# API endpoints
+curl https://your-app.render.com/
+curl https://your-app.render.com/world/map
+
+# Swagger docs
+open https://your-app.render.com/docs
 ```
 
-### 3. **Docker + VPS**
-```bash
-# No seu servidor VPS:
-docker-compose up -d -f docker-compose.prod.yml
-```
+---
 
-### 4. **Vercel** (Serverless)
-- Limitações: WebSockets podem não funcionar bem
-- Bom para API REST simples
+## 💰 Upgrade Futuro
+
+Quando precisar de mais recursos:
+- **Web Service**: $7/mês (512MB RAM)
+- **PostgreSQL**: $7/mês (1GB)
+- **Redis**: $10/mês (1GB)
+
+**Quer que eu te ajude com algum passo específico?** 🎯
 
 ## 📋 Pré-requisitos para Deploy
 
