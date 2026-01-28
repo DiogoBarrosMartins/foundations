@@ -43,5 +43,5 @@ services:
   - type: redis
     name: foundations-redis
 
-  - type: postgresql
+  - type: psql
     name: foundations-db
