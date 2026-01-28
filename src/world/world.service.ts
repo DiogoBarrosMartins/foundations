@@ -364,13 +364,27 @@ private async placeRaceStructures(worldId: string) {
 
   for (const race of races) {
     // Hub principal (tipo = OUTPOST, marcado como hub no metadata)
-    const hub = await this.prisma.tile.create({
-      data: {
+    const hub = await this.prisma.tile.upsert({
+      where: { x_y: { x: race.hubX, y: race.hubY } },
+      update: {
+        type: DbTileType.OUTPOST,
+        race: race.name as RaceName,
+        name: race.hubName,
+        playerId: "SYSTEM",
+        playerName: "SYSTEM",
+        metadata: {
+          race: race.name,
+          hub: true,
+          description: race.description,
+          traits: race.traits,
+        },
+      },
+      create: {
         worldId,
         x: race.hubX,
         y: race.hubY,
-        type: DbTileType.OUTPOST, // 👈 corrigido (era VILLAGE)
-        race: race.name as RaceName, // 👈 garantir que fica associado à raça
+        type: DbTileType.OUTPOST,
+        race: race.name as RaceName,
         name: race.hubName,
         playerId: "SYSTEM",
         playerName: "SYSTEM",
@@ -383,24 +397,33 @@ private async placeRaceStructures(worldId: string) {
       },
     });
 
-    this.logger.log(`🏰 ${race.name} hub '${race.hubName}' placed at (${hub.x}, ${hub.y})`);
+    this.logger.log(`[WorldService] ${race.name} hub '${race.hubName}' placed at (${hub.x}, ${hub.y})`);
 
     // Outposts secundários
     for (const outpost of race.outposts) {
-      const op = await this.prisma.tile.create({
-        data: {
+      const op = await this.prisma.tile.upsert({
+        where: { x_y: { x: outpost.x, y: outpost.y } },
+        update: {
+          type: DbTileType.OUTPOST,
+          race: race.name as RaceName,
+          name: outpost.name,
+          playerId: "SYSTEM",
+          playerName: "SYSTEM",
+          metadata: { outpostType: outpost.type },
+        },
+        create: {
           worldId,
           x: outpost.x,
           y: outpost.y,
           type: DbTileType.OUTPOST,
-          race: race.name as RaceName, // 👈 associar também à raça
+          race: race.name as RaceName,
           name: outpost.name,
           playerId: "SYSTEM",
           playerName: "SYSTEM",
           metadata: { outpostType: outpost.type },
         },
       });
-      this.logger.log(`🏕️ ${race.name} outpost '${op.name}' placed at (${op.x}, ${op.y})`);
+      this.logger.log(`[WorldService] ${race.name} outpost '${op.name}' placed at (${op.x}, ${op.y})`);
     }
   }
 }
@@ -415,19 +438,18 @@ private async spawnNpcVillages(worldId: string) {
     const x = this.rand(-50, 50);
     const y = this.rand(-50, 50);
 
-    const exists = await this.prisma.tile.findUnique({
-      where: { x_y: { x, y } }, // 👈 índice correto
+    const tile = await this.prisma.tile.findUnique({
+      where: { x_y: { x, y } },
     });
 
-    if (!exists) {
-      await this.prisma.tile.create({
+    // Only place NPC village on EMPTY tiles
+    if (tile && tile.type === DbTileType.EMPTY) {
+      await this.prisma.tile.update({
+        where: { x_y: { x, y } },
         data: {
-          worldId,
-          x,
-          y,
-          type: DbTileType.VILLAGE, // 👈 enum válido (NPCs tratados como aldeias especiais)
+          type: DbTileType.VILLAGE,
           name: `NPC Village ${placed + 1}`,
-          metadata: { npc: true }, // 👈 marca no metadata que é NPC
+          metadata: { npc: true },
         },
       });
       placed++;
