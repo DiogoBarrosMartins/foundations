@@ -40,10 +40,8 @@ services:
           name: foundations-redis
           property: connectionString
 
-  - type: pserv
+  - type: redis
     name: foundations-redis
-    runtime: redis
 
-  - type: pserv
+  - type: postgresql
     name: foundations-db
-    runtime: postgresql
