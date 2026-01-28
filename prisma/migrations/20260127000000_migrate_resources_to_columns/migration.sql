@@ -6,16 +6,17 @@
 
 */
 -- AlterTable: Add new columns with defaults
-ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "foodAmount" INTEGER NOT NULL DEFAULT 500,
-ADD COLUMN IF NOT EXISTS "woodAmount" INTEGER NOT NULL DEFAULT 500,
-ADD COLUMN IF NOT EXISTS "stoneAmount" INTEGER NOT NULL DEFAULT 500,
-ADD COLUMN IF NOT EXISTS "goldAmount" INTEGER NOT NULL DEFAULT 500,
-ADD COLUMN IF NOT EXISTS "foodProductionRate" INTEGER NOT NULL DEFAULT 10,
-ADD COLUMN IF NOT EXISTS "woodProductionRate" INTEGER NOT NULL DEFAULT 10,
-ADD COLUMN IF NOT EXISTS "stoneProductionRate" INTEGER NOT NULL DEFAULT 10,
-ADD COLUMN IF NOT EXISTS "goldProductionRate" INTEGER NOT NULL DEFAULT 8;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "foodAmount" INTEGER NOT NULL DEFAULT 500;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "woodAmount" INTEGER NOT NULL DEFAULT 500;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "stoneAmount" INTEGER NOT NULL DEFAULT 500;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "goldAmount" INTEGER NOT NULL DEFAULT 500;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "foodProductionRate" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "woodProductionRate" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "stoneProductionRate" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "public"."Village" ADD COLUMN IF NOT EXISTS "goldProductionRate" INTEGER NOT NULL DEFAULT 8;
 
 -- Migrate data from JSON fields to new columns (only if old columns exist)
+-- Using EXECUTE to avoid parse-time column validation
 DO $$
 BEGIN
   IF EXISTS (
@@ -24,12 +25,14 @@ BEGIN
     AND table_name = 'Village'
     AND column_name = 'resourceAmounts'
   ) THEN
-    UPDATE "public"."Village"
-    SET
-      "foodAmount" = COALESCE((resourceAmounts->>'food')::INTEGER, 500),
-      "woodAmount" = COALESCE((resourceAmounts->>'wood')::INTEGER, 500),
-      "stoneAmount" = COALESCE((resourceAmounts->>'stone')::INTEGER, 500),
-      "goldAmount" = COALESCE((resourceAmounts->>'gold')::INTEGER, 500);
+    EXECUTE '
+      UPDATE "public"."Village"
+      SET
+        "foodAmount" = COALESCE(("resourceAmounts"->>''food'')::INTEGER, 500),
+        "woodAmount" = COALESCE(("resourceAmounts"->>''wood'')::INTEGER, 500),
+        "stoneAmount" = COALESCE(("resourceAmounts"->>''stone'')::INTEGER, 500),
+        "goldAmount" = COALESCE(("resourceAmounts"->>''gold'')::INTEGER, 500)
+    ';
   END IF;
 
   IF EXISTS (
@@ -38,12 +41,14 @@ BEGIN
     AND table_name = 'Village'
     AND column_name = 'resourceProductionRates'
   ) THEN
-    UPDATE "public"."Village"
-    SET
-      "foodProductionRate" = COALESCE((resourceProductionRates->>'food')::INTEGER, 10),
-      "woodProductionRate" = COALESCE((resourceProductionRates->>'wood')::INTEGER, 10),
-      "stoneProductionRate" = COALESCE((resourceProductionRates->>'stone')::INTEGER, 10),
-      "goldProductionRate" = COALESCE((resourceProductionRates->>'gold')::INTEGER, 8);
+    EXECUTE '
+      UPDATE "public"."Village"
+      SET
+        "foodProductionRate" = COALESCE(("resourceProductionRates"->>''food'')::INTEGER, 10),
+        "woodProductionRate" = COALESCE(("resourceProductionRates"->>''wood'')::INTEGER, 10),
+        "stoneProductionRate" = COALESCE(("resourceProductionRates"->>''stone'')::INTEGER, 10),
+        "goldProductionRate" = COALESCE(("resourceProductionRates"->>''gold'')::INTEGER, 8)
+    ';
   END IF;
 END $$;
 
