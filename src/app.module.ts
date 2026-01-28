@@ -16,14 +16,34 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WorldModule } from './world/world.module';
 import { BullModule } from '@nestjs/bull';
 
+// Parse Redis URL or use individual host/port
+function getRedisConfig() {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    try {
+      const url = new URL(redisUrl);
+      return {
+        host: url.hostname,
+        port: parseInt(url.port) || 6379,
+        password: url.password || undefined,
+        username: url.username || undefined,
+        tls: url.protocol === 'rediss:' ? {} : undefined,
+      };
+    } catch {
+      console.warn('Failed to parse REDIS_URL, falling back to host/port');
+    }
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+  };
+}
+
 @Module({
   imports: [
   BullModule.forRoot({
-  redis: {
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT),
-  },
-}),
+    redis: getRedisConfig(),
+  }),
     SocketModule,
     PrismaModule,
     BuildingModule,
