@@ -14,6 +14,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { AttackRequestDto } from '../combat/dto/attack-request.dto';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ConstructionProcessor } from 'src/construction/construction.processor';
+
 type CombatState = {
   outgoing: any[];
   incoming: any[];
@@ -33,7 +34,7 @@ export class VillageService {
     this.logger.log('[VillageService] Constructed');
   }
 
-  @OnEvent('player.created') // 👂 Ouve evento
+  @OnEvent('player.created')
   async handlePlayerCreated(payload: {
     playerId: string;
     playerName: string;
@@ -117,10 +118,7 @@ export class VillageService {
     });
 
     if (existingVillage) {
-      this.logger.warn(
-        '[VillageService] Village already exists:',
-        existingVillage,
-      );
+      this.logger.warn('[VillageService] Village already exists:', existingVillage);
       return existingVillage;
     }
 
@@ -152,16 +150,56 @@ export class VillageService {
     return village;
   }
 
+  /**
+   * Get all villages with a single optimized query.
+   * FIXED: Removed N+1 query pattern.
+   */
   async findAll() {
     this.logger.log('[VillageService] findAll called');
 
-    const villages = await this.prisma.village.findMany();
+    // Single query with all includes - no N+1!
+    const villages = await this.prisma.village.findMany({
+      include: {
+        buildings: true,
+        troops: {
+          where: { status: 'idle' },
+        },
+        trainingTasks: {
+          where: { status: { not: 'completed' } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
-    await Promise.all(
-      villages.map((v) => this.resourceService.getResources(v.id)),
-    );
+    // Calculate resources in-memory without updating DB
+    const now = new Date();
+    return villages.map((village) => {
+      const elapsedSec = Math.floor(
+        (now.getTime() - village.lastCollectedAt.getTime()) / 1000,
+      );
 
-    return this.prisma.village.findMany({
+      return {
+        ...village,
+        // Calculated resources (not persisted, just for display)
+        calculatedResources: {
+          food: village.foodAmount + elapsedSec * village.foodProductionRate,
+          wood: village.woodAmount + elapsedSec * village.woodProductionRate,
+          stone: village.stoneAmount + elapsedSec * village.stoneProductionRate,
+          gold: village.goldAmount + elapsedSec * village.goldProductionRate,
+        },
+      };
+    });
+  }
+
+  async getVillageDetails(villageId: string) {
+    this.logger.log(`[VillageService] Fetching details for ${villageId}`);
+    return this.refreshVillageState(villageId);
+  }
+
+  async findByPlayer(playerId: string) {
+    // Single query instead of N+1
+    const villages = await this.prisma.village.findMany({
+      where: { playerId },
       include: {
         buildings: true,
         troops: true,
@@ -171,18 +209,14 @@ export class VillageService {
         },
       },
     });
-  }
-  async getVillageDetails(villageId: string) {
-    this.logger.log(`[VillageService] Fetching details for ${villageId}`);
-    return this.refreshVillageState(villageId);
-  }
 
+    // Only refresh the first village (current active), others just return data
+    if (villages.length > 0) {
+      await this.resourceService.getResources(villages[0].id);
+    }
 
-  async findByPlayer(playerId: string) {
-    const villages = await this.prisma.village.findMany({ where: { playerId } });
-    return Promise.all(villages.map((v) => this.refreshVillageState(v.id)));
+    return villages;
   }
-
 
   async remove(id: string) {
     this.logger.log('[VillageService] Removing village with ID:', id);
@@ -211,42 +245,54 @@ export class VillageService {
       throw new BadRequestException('Village ID or coordinates are required');
     }
 
-    const village = villageId
-      ? await this.prisma.village.findUniqueOrThrow({
-        where: { id: villageId },
-      })
-      : await this.prisma.village.findFirstOrThrow({
-        where: { x: coords!.x, y: coords!.y },
+    // Use transaction to prevent race conditions on combat state
+    await this.prisma.$transaction(async (tx) => {
+      const village = villageId
+        ? await tx.village.findUniqueOrThrow({
+            where: { id: villageId },
+          })
+        : await tx.village.findFirstOrThrow({
+            where: { x: coords!.x, y: coords!.y },
+          });
+
+      const state: CombatState =
+        (village as any).combatState || { outgoing: [], incoming: [] };
+
+      if (combat.type === 'incoming') {
+        delete combat.troops;
+      }
+
+      state[combat.type] ??= [];
+
+      // Limit combat state size to prevent infinite growth
+      if (state[combat.type].length >= 100) {
+        state[combat.type] = state[combat.type].slice(-50);
+      }
+
+      state[combat.type].push(combat);
+
+      await tx.village.update({
+        where: { id: village.id },
+        data: { combatState: state as any },
       });
-
-    const state: CombatState =
-      (village as any).combatState || { outgoing: [], incoming: [] };
-
-    if (combat.type === 'incoming') {
-      delete combat.troops;
-    }
-
-    state[combat.type] ??= [];
-    state[combat.type].push(combat);
-
-    await this.prisma.village.update({
-      where: { id: village.id },
-      data: { combatState: state as any },
     });
 
-    this.logger.log(
-      `[VillageService] Combat state updated for ${combat.type} village`,
-      village.id,
-    );
+    this.logger.log(`[VillageService] Combat state updated for ${combat.type}`);
   }
 
+  /**
+   * Refresh village state - optimized version with fewer queries.
+   */
   async refreshVillageState(villageId: string) {
     this.logger.log(`[VillageService] Refreshing state for village ${villageId}`);
 
+    // Single query to get all data
     const village = await this.prisma.village.findUniqueOrThrow({
       where: { id: villageId },
       include: {
-        trainingTasks: true,
+        trainingTasks: {
+          orderBy: { createdAt: 'asc' },
+        },
         buildings: true,
         troops: true,
       },
@@ -254,44 +300,34 @@ export class VillageService {
 
     const now = new Date();
 
-    // 1️⃣ Atualizar recursos
+    // Collect resources atomically
     await this.resourceService.getResources(villageId);
 
-    // 2️⃣ Completar treinos expirados
+    // Process expired training tasks
     const expiredTasks = village.trainingTasks.filter(
       (t) => t.status === 'in_progress' && t.endTime && new Date(t.endTime) <= now,
     );
 
-    for (const task of expiredTasks) {
-      this.logger.log(
-        `[VillageService] Completing expired training task ${task.id} for village ${villageId}`,
-      );
-      await this.trainingService.forceCompleteTask(task.id);
+    if (expiredTasks.length > 0) {
+      // Batch complete all expired tasks
+      for (const task of expiredTasks) {
+        this.logger.log(`[VillageService] Completing expired training task ${task.id}`);
+        await this.trainingService.forceCompleteTask(task.id);
+      }
     }
 
-    // Se não há task in_progress, ativar a próxima pending
-    const hasInProgress = await this.prisma.trainingTask.findFirst({
-      where: { villageId, status: 'in_progress' },
-    });
+    // Trigger next pending task if no in-progress
+    const hasInProgress = village.trainingTasks.some((t) => t.status === 'in_progress');
     if (!hasInProgress) {
-      const nextPending = await this.prisma.trainingTask.findFirst({
-        where: { villageId, status: 'pending' },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (nextPending) {
-        this.logger.log(
-          `[VillageService] Triggering next training task ${nextPending.id}`,
-        );
+      const hasPending = village.trainingTasks.some((t) => t.status === 'pending');
+      if (hasPending) {
         await this.trainingService.triggerNextTaskIfAvailable(villageId);
       }
     }
 
-    // 3️⃣ Completar construções expiradas
+    // Process expired buildings
     const expiredBuildings = village.buildings.filter(
-      (b) =>
-        b.status === 'queued' &&
-        b.queuedUntil &&
-        new Date(b.queuedUntil) <= now,
+      (b) => b.status === 'queued' && b.queuedUntil && new Date(b.queuedUntil) <= now,
     );
 
     for (const building of expiredBuildings) {
@@ -303,12 +339,14 @@ export class VillageService {
       );
     }
 
-    // 4️⃣ Recarregar aldeia já consistente
+    // Return fresh data
     return this.prisma.village.findUniqueOrThrow({
       where: { id: villageId },
       include: {
         buildings: true,
-        troops: true,
+        troops: {
+          where: { status: 'idle' },
+        },
         trainingTasks: {
           where: { status: { not: 'completed' } },
           orderBy: { createdAt: 'asc' },
@@ -316,8 +354,6 @@ export class VillageService {
       },
     });
   }
-
-
 
   async createArmyMovement(payload: {
     villageId: string;
@@ -345,9 +381,7 @@ export class VillageService {
       },
     });
 
-    this.logger.log(
-      `✅ Movement ${payload.direction} Registered for village ${payload.villageId}`,
-    );
+    this.logger.log(`[VillageService] Movement ${payload.direction} registered for village ${payload.villageId}`);
   }
 
   async validateBattleRequest(dto: AttackRequestDto) {
@@ -361,9 +395,7 @@ export class VillageService {
     }
 
     for (const req of dto.troops) {
-      const vTroop = village.troops.find(
-        (t) => t.troopType === req.troopType,
-      );
+      const vTroop = village.troops.find((t) => t.troopType === req.troopType);
       if (!vTroop || vTroop.quantity < req.quantity) {
         this.logger.warn('[VillageService] Insufficient troops:', req);
         throw new BadRequestException(`Insufficient troops: ${req.troopType}`);
@@ -393,42 +425,60 @@ export class VillageService {
     return { status: 'VALIDATED', validated };
   }
 
+  /**
+   * Reserve troops for battle using atomic transaction.
+   * FIXED: Prevents race conditions with concurrent attacks.
+   */
   private async reserveTroopsForBattle(
     villageId: string,
     troops: { troopType: string; quantity: number }[],
   ) {
-    this.logger.log('[VillageService] Reserving troops for battle:', {
-      villageId,
-      troops,
+    this.logger.log('[VillageService] Reserving troops for battle:', { villageId, troops });
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const { troopType, quantity } of troops) {
+        // Lock and check current troop count
+        const currentTroop = await tx.troop.findFirst({
+          where: { villageId, troopType, status: 'idle' },
+        });
+
+        if (!currentTroop || currentTroop.quantity < quantity) {
+          throw new BadRequestException(
+            `Insufficient troops: need ${quantity} ${troopType}, have ${currentTroop?.quantity ?? 0}`,
+          );
+        }
+
+        // Atomic decrement with check
+        const updated = await tx.troop.update({
+          where: { id: currentTroop.id },
+          data: { quantity: { decrement: quantity } },
+        });
+
+        // Verify we didn't go negative (extra safety)
+        if (updated.quantity < 0) {
+          throw new BadRequestException(
+            `Race condition detected: insufficient ${troopType}`,
+          );
+        }
+
+        // Handle on_route troops
+        const existingOnRoute = await tx.troop.findFirst({
+          where: { villageId, troopType, status: 'on_route' },
+        });
+
+        if (existingOnRoute) {
+          await tx.troop.update({
+            where: { id: existingOnRoute.id },
+            data: { quantity: { increment: quantity } },
+          });
+        } else {
+          await tx.troop.create({
+            data: { villageId, troopType, quantity, status: 'on_route' },
+          });
+        }
+      }
     });
 
-    for (const { troopType, quantity } of troops) {
-      const updated = await this.prisma.troop.updateMany({
-        where: { villageId, troopType },
-        data: { quantity: { decrement: quantity } },
-      });
-
-      if (!updated.count) {
-        this.logger.warn(
-          `[VillageService] Failed to reserve troops: ${troopType}`,
-        );
-        continue;
-      }
-
-      const existing = await this.prisma.troop.findFirst({
-        where: { villageId, troopType, status: 'on_route' },
-      });
-
-      if (existing) {
-        await this.prisma.troop.update({
-          where: { id: existing.id },
-          data: { quantity: { increment: quantity } },
-        });
-      } else {
-        await this.prisma.troop.create({
-          data: { villageId, troopType, quantity, status: 'on_route' },
-        });
-      }
-    }
+    this.logger.log('[VillageService] Troops reserved successfully');
   }
 }

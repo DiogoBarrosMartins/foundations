@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CombatController } from './combat.controller';
-import { CombatService } from './combat.service';
+import { CombatController } from '../combat.controller';
+import { CombatService } from '../combat.service';
 
 describe('CombatController', () => {
   let controller: CombatController;

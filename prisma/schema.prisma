@@ -70,7 +70,7 @@ model Village {
   y         Int
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
-  resolvedAt      DateTime? 
+  resolvedAt      DateTime?
 
   // Resource amounts as separate columns
   foodAmount    Int @default(500)
@@ -86,9 +86,9 @@ model Village {
 
   lastCollectedAt         DateTime @default(now())
 
-race RaceName @default(HUMAN)
+  race RaceName @default(HUMAN)
 
-  combatState Json? 
+  combatState Json?
 
   buildings     Building[]
   troops        Troop[]
@@ -97,6 +97,10 @@ race RaceName @default(HUMAN)
   tasks         ConstructionTask[]
   trainingTasks TrainingTask[]
   armyMovements ArmyMovement[]
+
+  // Performance indexes
+  @@index([playerId])
+  @@index([x, y])
 }
 
 model Tile {
@@ -117,6 +121,11 @@ model Tile {
   village    Village?  @relation("VillageTile")
 
   @@unique([x, y], name: "x_y")
+
+  // Performance indexes
+  @@index([worldId])
+  @@index([type])
+  @@index([race])
 }
 
 enum BuildingType {
@@ -153,6 +162,11 @@ model Building {
   updatedAt DateTime @updatedAt
 
   tasks ConstructionTask[]
+
+  // Performance indexes
+  @@index([villageId])
+  @@index([villageId, type])
+  @@index([status])
 }
 
 model ConstructionTask {
@@ -171,6 +185,11 @@ model ConstructionTask {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Performance indexes
+  @@index([villageId])
+  @@index([villageId, status])
+  @@index([buildingId])
 }
 
 model Troop {
@@ -204,6 +223,12 @@ model TrainingTask {
 
   Troop   Troop   @relation(fields: [troopId], references: [id])
   Village Village @relation(fields: [villageId], references: [id])
+
+  // Performance indexes
+  @@index([villageId])
+  @@index([villageId, status])
+  @@index([villageId, buildingType, status])
+  @@index([status, endTime])
 }
 
 model World {
@@ -229,8 +254,14 @@ model Battle {
   arrivalTime      DateTime
   status           String
   createdAt        DateTime @default(now())
-  resolvedAt       DateTime? 
+  resolvedAt       DateTime?
   report           BattleReport?
+
+  // Performance indexes
+  @@index([attackerVillageId])
+  @@index([defenderVillageId])
+  @@index([status])
+  @@index([status, arrivalTime])
 }
 
 model BattleReport {
@@ -258,4 +289,9 @@ model ArmyMovement {
   troops    Json
   arrivalTime DateTime
   createdAt DateTime @default(now())
+
+  // Performance indexes
+  @@index([villageId])
+  @@index([battleId])
+  @@index([arrivalTime])
 }

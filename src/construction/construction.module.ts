@@ -1,20 +1,19 @@
 import { Module, forwardRef } from '@nestjs/common';
-
-import { PrismaService } from 'src/prisma/prisma.service';
+import { BullModule } from '@nestjs/bull';
 import { ConstructionProcessor } from './construction.processor';
-
 import { ConstructionService } from './construction.service';
 import { BuildingModule } from '../building/building.module';
-import { BullModule } from '@nestjs/bull';
+import { SocketModule } from '../socket/socket.module';
 
 @Module({
   imports: [
-    forwardRef(() => BuildingModule),    BullModule.registerQueue({
-      name: 'construction', // <-- obrigatório para o @Processor('construction')
+    forwardRef(() => BuildingModule),
+    SocketModule,
+    BullModule.registerQueue({
+      name: 'construction',
     }),
   ],
-  
-  providers: [PrismaService, ConstructionService, ConstructionProcessor],
+  providers: [ConstructionService, ConstructionProcessor],
   exports: [ConstructionService, ConstructionProcessor],
 })
 export class ConstructionModule {}

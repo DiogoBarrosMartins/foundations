@@ -66,10 +66,12 @@ export class TrainingService {
 
     if (status === 'in_progress') {
       const job = await this.trainingQueue.queueTraining(task.id, unitTimeMs);
-      await this.prisma.trainingTask.update({
-        where: { id: task.id },
-        data: { queueJobId: job.id?.toString() ?? null },
-      });
+      if (job) {
+        await this.prisma.trainingTask.update({
+          where: { id: task.id },
+          data: { queueJobId: job.id?.toString() ?? null },
+        });
+      }
 
       this.eventEmitter.emit('troop.training.started', {
         villageId,
@@ -154,10 +156,12 @@ async triggerNextTaskIfAvailable(villageId: string) {
     });
 
     const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
-    await this.prisma.trainingTask.update({
-      where: { id: next.id },
-      data: { queueJobId: job.id?.toString() ?? null },
-    });
+    if (job) {
+      await this.prisma.trainingTask.update({
+        where: { id: next.id },
+        data: { queueJobId: job.id?.toString() ?? null },
+      });
+    }
 
     this.eventEmitter.emit('troop.training.started', {
       villageId,
@@ -177,18 +181,16 @@ async triggerNextTaskIfAvailable(villageId: string) {
   await this.prisma.trainingTask.update({
     where: { id: next.id },
     data: { status: 'in_progress', startTime: new Date() },
-
-
-
-
   });
 
   const job = await this.trainingQueue.queueTraining(next.id, unitTimeMs);
 
-  await this.prisma.trainingTask.update({
-    where: { id: next.id },
-    data: { queueJobId: job.id?.toString() ?? null },
-  });
+  if (job) {
+    await this.prisma.trainingTask.update({
+      where: { id: next.id },
+      data: { queueJobId: job.id?.toString() ?? null },
+    });
+  }
 
   this.eventEmitter.emit('troop.training.started', {
     villageId,

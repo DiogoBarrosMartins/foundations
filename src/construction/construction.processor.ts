@@ -1,72 +1,113 @@
 import { Processor, Process } from '@nestjs/bull';
 import type { Job } from 'bull';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { BuildingType } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FinishBuildPayload } from './construction.service';
 import { BUILDING_PRODUCTION_INCREASES } from 'src/game/constants/building.constants';
+import { SocketGateway } from 'src/socket/socket.gateway';
 
 @Processor('construction')
 @Injectable()
 export class ConstructionProcessor {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ConstructionProcessor.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly socket: SocketGateway,
+  ) {}
 
   /**
-   * Finaliza um upgrade de construção:
-   * - Sobe nível
-   * - Marca task como completed
-   * - Atualiza produção de recursos (se aplicável)
+   * Bull job handler for construction completion.
+   */
+  @Process('finishBuild')
+  async handleFinishBuild(job: Job<FinishBuildPayload>) {
+    this.logger.log(`[handleFinishBuild] Processing job ${job.id}:`, job.data);
+    const { villageId, buildingId, type, targetLevel } = job.data;
+
+    await this.finishBuilding(villageId, buildingId, type, targetLevel);
+  }
+
+  /**
+   * Complete a building upgrade.
+   * Can be called directly (for catch-up) or via job processor.
    */
   async finishBuilding(
     villageId: string,
     buildingId: string,
     type: BuildingType,
     targetLevel: number,
-  ) {
-    console.log(
-      `[finishBuilding] ${type} → nível ${targetLevel} (village ${villageId})`,
+  ): Promise<void> {
+    this.logger.log(
+      `[finishBuilding] ${type} -> level ${targetLevel} (village ${villageId})`,
     );
 
-    // Atualizar building
-    await this.prisma.building.update({
-      where: { id: buildingId },
-      data: { level: targetLevel, status: 'idle', queuedUntil: null },
-    });
+    // Use transaction to ensure atomicity
+    await this.prisma.$transaction(async (tx) => {
+      // Check building exists
+      const existing = await tx.building.findUnique({
+        where: { id: buildingId },
+      });
 
-    // Marcar tasks como completed
-    await this.prisma.constructionTask.updateMany({
-      where: { villageId, buildingId, status: 'in_progress' },
-      data: { status: 'completed' },
-    });
+      if (!existing) {
+        this.logger.error(`Building ${buildingId} not found, skipping`);
+        return;
+      }
 
-    // Atualizar produção se for recurso
-    const increment = this.getProductionIncrease(type, targetLevel);
-    if (increment) {
-      const village = await this.prisma.village.findUnique({
-        where: { id: villageId },
-        select: {
-          foodProductionRate: true,
-          woodProductionRate: true,
-          stoneProductionRate: true,
-          goldProductionRate: true,
+      // Skip if already at target level (idempotency)
+      if (existing.level >= targetLevel) {
+        this.logger.warn(
+          `Building ${buildingId} already at level ${existing.level}, skipping`,
+        );
+        return;
+      }
+
+      // Update building level and status
+      const updatedBuilding = await tx.building.update({
+        where: { id: buildingId },
+        data: {
+          level: targetLevel,
+          status: 'idle',
+          queuedUntil: null,
         },
       });
-      if (!village) return;
 
-      const updateData: any = {};
-      updateData[`${increment.resource}ProductionRate`] = village[`${increment.resource}ProductionRate`] + increment.amount;
-
-      await this.prisma.village.update({
-        where: { id: villageId },
-        data: updateData,
+      // Mark construction tasks as completed
+      await tx.constructionTask.updateMany({
+        where: {
+          villageId,
+          buildingId,
+          status: 'in_progress',
+        },
+        data: { status: 'completed' },
       });
 
-      console.log(
-        `[finishBuilding] Produção de ${increment.resource} +${increment.amount}`,
-      );
-    }
+      // Update production rates if applicable
+      const increment = this.getProductionIncrease(type, targetLevel);
+      if (increment) {
+        // Use atomic increment instead of read-then-write
+        const updateField = `${increment.resource}ProductionRate` as const;
+
+        await tx.village.update({
+          where: { id: villageId },
+          data: {
+            [updateField]: { increment: increment.amount },
+          },
+        });
+
+        this.logger.log(
+          `[finishBuilding] Production +${increment.amount} ${increment.resource}`,
+        );
+      }
+
+      // Notify clients via socket
+      this.socket.sendConstructionUpdate(villageId, updatedBuilding);
+    });
   }
 
+  /**
+   * Calculate production increase for resource buildings.
+   */
   private getProductionIncrease(
     type: BuildingType,
     level: number,
@@ -88,52 +129,4 @@ export class ConstructionProcessor {
 
     return amount > 0 ? { resource, amount } : null;
   }
-
-  @Process('finishBuild')
-  async handleFinishBuild(job: Job<FinishBuildPayload>) {
-    console.log('🚧 [ConstructionProcessor] Job received:', job.data);
-    const { villageId, buildingId, type, targetLevel } = job.data;
-
-    const existing = await this.prisma.building.findUnique({
-      where: { id: buildingId },
-    });
-    if (!existing) {
-      console.error(`Building with id ${buildingId} not found.`);
-      return;
-    }
-
-    await this.prisma.building.update({
-      where: { id: buildingId },
-      data: { level: targetLevel, status: 'idle', queuedUntil: null },
-    });
-
-    await this.prisma.constructionTask.updateMany({
-      where: { villageId, buildingId, status: 'in_progress' },
-      data: { status: 'completed' },
-    });
-
-    const increment = this.getProductionIncrease(type, targetLevel);
-    if (increment) {
-      const village = await this.prisma.village.findUnique({
-        where: { id: villageId },
-        select: {
-          foodProductionRate: true,
-          woodProductionRate: true,
-          stoneProductionRate: true,
-          goldProductionRate: true,
-        },
-      });
-      if (!village) return;
-
-      const updateData: any = {};
-      updateData[`${increment.resource}ProductionRate`] = village[`${increment.resource}ProductionRate`] + increment.amount;
-
-      await this.prisma.village.update({
-        where: { id: villageId },
-        data: updateData,
-      });
-    }
-  }
- 
 }
-
