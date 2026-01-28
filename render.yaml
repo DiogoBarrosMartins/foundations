@@ -47,5 +47,3 @@ services:
   - type: pserv
     name: foundations-db
     runtime: postgresql
-    databaseName: foundations
-    user: foundations_user
