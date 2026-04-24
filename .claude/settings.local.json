@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(npx vite:*)",
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(for i in 1 2 3)",
+      "Bash(do echo \"Attempt $i:\")",
+      "Bash(done)",
+      "Bash(ls:*)"
+    ]
+  }
+}

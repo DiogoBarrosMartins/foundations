@@ -224,7 +224,7 @@ export class WorldService {
   }
 // generateWorld.ts
 async generateWorld() {
-  this.logger.warn("[WorldService] No world found. Generating...");
+  this.logger.log("[WorldService] Generating world (this clears existing tiles)...");
 
   const WORLD_SIZE = 100;
   const seed = Date.now();

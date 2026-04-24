@@ -100,7 +100,8 @@ export class PlayerService {
       name: `${player.username}'s Village`,
     });
 
-    return { player, token };
+    const { password: _pw, ...safePlayer } = player;
+    return { player: safePlayer, token };
   }
 
   async login(dto: LoginPlayerDto) {
@@ -113,7 +114,8 @@ export class PlayerService {
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
     const token = this.generateToken(player.id);
-    return { player, token };
+    const { password: _pw, ...safePlayer } = player;
+    return { player: safePlayer, token };
   }
 
   findAll() {
